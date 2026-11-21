@@ -41,6 +41,15 @@ body[data-ds-dark-theme] :where(.tbea-sources,.tbea-selection,.tbea-prefetched,.
 
 /* 与原生 PlanChip / Button.sm 共用 28px 高度和 8px 圆角层级。 */
 .tbea-selection { display:flex; align-items:center; flex-wrap:wrap; gap:6px 8px; padding:4px 0; }
+/* 复用输入卡片的两侧留白和宽度上限，内缩至编辑区的文字起点。 */
+[data-composer-seat] .tbea-selection-dock {
+  padding-inline:var(--dsh-composer-side-clearance,0px);
+}
+[data-composer-seat] .tbea-selection {
+  max-inline-size:var(--dsh-composer-card-max-width,100%);
+  margin-inline:auto;
+  padding-inline:14px;
+}
 .tbea-selection-chip { display:inline-flex; align-items:center; flex:none; gap:4px; height:28px; padding:0 4px 0 8px; border:0; border-radius:var(--dsw-radius-sm,8px); font-size:13px; font-weight:500; line-height:20px; color:var(--tbea-accent); background:var(--tbea-accent-bg); }
 .tbea-selection-chip button { display:inline-flex; align-items:center; justify-content:center; width:24px; height:24px; padding:0; border:0; border-radius:var(--dsw-radius-xs,4px); background:transparent; color:inherit; }
 .tbea-selection-status,.tbea-selection-error { display:inline-flex; align-items:center; gap:6px; min-width:0; font-size:12px; line-height:18px; color:var(--tbea-muted); overflow-wrap:anywhere; }
@@ -149,7 +158,42 @@ body[data-ds-dark-theme] :where(.tbea-sources,.tbea-selection,.tbea-prefetched,.
 .tbea-library-filters { display:grid;gap:9px;padding:13px 12px 9px;position:sticky;top:0;background:var(--tbea-lib-surface);z-index:1;border-bottom:1px solid var(--tbea-lib-border); }
 .tbea-library-field { display:grid;gap:5px;font-weight:600; }
 .tbea-library-field select,.tbea-library-search { color:var(--tbea-lib-fg);background:var(--tbea-lib-surface);border:1px solid var(--tbea-lib-border);border-radius:6px;min-width:0;min-height:32px; }
-.tbea-library-field select { padding:3px 8px;font:inherit;font-weight:400; }
+.tbea-library-field select { width:100%;padding:3px 8px;font:inherit;font-weight:400; }
+@supports (appearance:base-select) and selector(select::picker(select)) {
+  .tbea-library-field select,.tbea-library-field select::picker(select) { appearance:base-select; }
+  .tbea-library-field select { align-items:center;gap:8px;padding:4px 10px;cursor:pointer; }
+  .tbea-library-field select::picker-icon { color:var(--tbea-lib-muted); }
+  .tbea-library-field select:open::picker-icon { rotate:180deg; }
+  .tbea-library-field select::picker(select) {
+    box-sizing:border-box;
+    inline-size:anchor-size(width);
+    min-inline-size:0;
+    max-block-size:min(280px,60dvh);
+    margin-block:4px;
+    padding:4px;
+    overflow-y:auto;
+    color:var(--tbea-lib-fg);
+    background:var(--tbea-lib-surface);
+    border:1px solid var(--tbea-lib-border);
+    border-radius:var(--dsw-radius-md,10px);
+    box-shadow:var(--dsw-elevation-panel,0 8px 24px rgba(0,0,0,.14));
+  }
+  .tbea-library-field option {
+    align-items:center;
+    gap:8px;
+    min-height:32px;
+    padding:6px 8px;
+    border-radius:var(--dsw-radius-sm,6px);
+    overflow-wrap:anywhere;
+    white-space:normal;
+    line-height:1.4;
+    cursor:pointer;
+  }
+  .tbea-library-field option:is(:hover,:focus-visible) { background:var(--tbea-lib-hover); }
+  .tbea-library-field option:checked { background:var(--tbea-lib-active);font-weight:600; }
+  .tbea-library-field option:focus-visible { outline:2px solid var(--tbea-lib-accent);outline-offset:-2px; }
+  .tbea-library-field option::checkmark { order:1;margin-inline-start:auto;color:var(--tbea-lib-accent); }
+}
 .tbea-library-description { color:var(--tbea-lib-muted);overflow-wrap:anywhere;max-height:5em;overflow:auto;font-size:12px;line-height:1.5; }
 .tbea-library-search { display:flex;gap:6px;align-items:center;padding:0 8px;color:var(--tbea-lib-muted); }
 .tbea-library-search input { color:var(--tbea-lib-fg);font:inherit;min-width:0;width:100%;min-height:28px;border:0;background:transparent; }

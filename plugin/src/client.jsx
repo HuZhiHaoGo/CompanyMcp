@@ -61,14 +61,18 @@ export function KnowledgeSelection({ selection, selectionSessionId }) {
   const serviceError=state.servicePhase==='error';
   const serviceStopped=state.servicePhase==='stopped';
   if (!state.selected && !state.error && !state.pending && !serviceError && !serviceStopped && state.servicePhase!=='starting') return null;
-  return <div className="tbea-selection" aria-label="公司知识库来源选择">
-    {state.selected ? <span className="tbea-selection-chip"><BookOpen size={14} /><span>公司知识库</span><button type="button" aria-label="取消公司知识库" title={state.autoRetrieveKnowledge === false ? '取消后，需手动选择才会查询公司知识库' : '取消后由模型按需判断是否查库'} disabled={state.pending} onClick={() => { void selection.select(selectionSessionId, false); }}><X size={13} /></button></span> : null}
-    {state.pending || state.phase === 'searching' ? <span className="tbea-selection-status" role="status"><LoaderCircle size={13} className="tbea-spin" />{state.pending ? (state.pendingAction==='service' ? '正在启动公司知识服务…' : '正在保存选择…') : state.message}</span> : null}
-    {state.phase === 'partial' && !state.pending ? <span className="tbea-selection-status" role="status">{state.message}</span> : null}
-    {state.servicePhase==='starting' && !state.pending ? <span className="tbea-selection-status" role="status"><LoaderCircle size={13} className="tbea-spin" />正在启动公司知识服务…</span> : null}
-    {serviceStopped ? <span className="tbea-selection-status" role="status">{state.serviceMessage}</span> : null}
-    {state.error || serviceError || state.phase === 'error' || state.phase === 'stopped' ? <span className="tbea-selection-error" role="alert">{state.error || (serviceError ? state.serviceMessage : state.message)}{serviceError ? <button className="tbea-icon" type="button" title="重试启动知识服务" aria-label="重试启动知识服务" disabled={state.pending} onClick={()=>{ void selection.retry(selectionSessionId); }}><RefreshCw size={16}/></button> : null}</span> : null}
-  </div>;
+  return (
+    <div className="tbea-selection-dock">
+      <div className="tbea-selection" aria-label="公司知识库来源选择">
+        {state.selected ? <span className="tbea-selection-chip"><BookOpen size={14} /><span>公司知识库</span><button type="button" aria-label="取消公司知识库" title={state.autoRetrieveKnowledge === false ? '取消后，需手动选择才会查询公司知识库' : '取消后由模型按需判断是否查库'} disabled={state.pending} onClick={() => { void selection.select(selectionSessionId, false); }}><X size={13} /></button></span> : null}
+        {state.pending || state.phase === 'searching' ? <span className="tbea-selection-status" role="status"><LoaderCircle size={13} className="tbea-spin" />{state.pending ? (state.pendingAction==='service' ? '正在启动公司知识服务…' : '正在保存选择…') : state.message}</span> : null}
+        {state.phase === 'partial' && !state.pending ? <span className="tbea-selection-status" role="status">{state.message}</span> : null}
+        {state.servicePhase==='starting' && !state.pending ? <span className="tbea-selection-status" role="status"><LoaderCircle size={13} className="tbea-spin" />正在启动公司知识服务…</span> : null}
+        {serviceStopped ? <span className="tbea-selection-status" role="status">{state.serviceMessage}</span> : null}
+        {state.error || serviceError || state.phase === 'error' || state.phase === 'stopped' ? <span className="tbea-selection-error" role="alert">{state.error || (serviceError ? state.serviceMessage : state.message)}{serviceError ? <button className="tbea-icon" type="button" title="重试启动知识服务" aria-label="重试启动知识服务" disabled={state.pending} onClick={()=>{ void selection.retry(selectionSessionId); }}><RefreshCw size={16}/></button> : null}</span> : null}
+      </div>
+    </div>
+  );
 }
 
 export function PrefetchedKnowledge({ node, bridge }) {

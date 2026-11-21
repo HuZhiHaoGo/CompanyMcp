@@ -166,6 +166,19 @@ try {
       await route.fulfill({ response: await route.fetch({ url: url.href }) });
     });
     await page.goto('http://127.0.0.1:17869/demo?library');
+    const libraryPicker = page.getByRole('combobox', { name: '知识库', exact: true });
+    if (await page.evaluate(() => CSS.supports('appearance: base-select') && CSS.supports('selector(select::picker(select))'))) {
+      await libraryPicker.press('Space');
+      const openPicker = page.locator('select:open');
+      await openPicker.waitFor();
+      const matchesTrigger = await libraryPicker.evaluate(element => {
+        const menu = getComputedStyle(element, '::picker(select)');
+        return parseFloat(menu.borderRadius) > 0 && Math.abs(parseFloat(menu.width) - element.getBoundingClientRect().width) <= 1;
+      });
+      if (!matchesTrigger) throw new Error(`${name}: knowledge-base menu must be rounded and match the trigger width`);
+      await page.keyboard.press('Escape');
+      await openPicker.waitFor({ state: 'detached' });
+    }
     const search = page.getByRole('searchbox', { name: '搜索文档名称' });
     await search.fill('.pdf');
     await page.getByText('找到 1 份文档').waitFor();
