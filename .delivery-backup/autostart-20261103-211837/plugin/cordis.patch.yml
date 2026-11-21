@@ -1,0 +1,5 @@
+- insert:
+    - id: tbea-knowledge
+      name: dsh-plugin-tbea-knowledge
+      config:
+        configFile: "F:/Code/dsh-mcp-tbea-knowledge/config/local.json"

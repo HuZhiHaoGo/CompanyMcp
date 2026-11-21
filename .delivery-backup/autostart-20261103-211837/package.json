@@ -1,0 +1,31 @@
+{
+  "name": "tbea-knowledge-workspace",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=24.9.0" },
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "test": "node --test tests/*.test.mjs",
+    "test:ui": "node scripts/verify-ui.mjs",
+    "start": "node dist/server.mjs --config config/local.json",
+    "init": "node scripts/init.mjs",
+    "doctor": "node scripts/doctor.mjs",
+    "pack:offline": "node scripts/licenses.mjs && node scripts/offline.mjs",
+    "test:offline": "node scripts/verify-offline.mjs"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "1.32.2",
+    "parse5": "^8.0.0",
+    "mdast-util-from-markdown": "^2.0.2",
+    "mdast-util-gfm": "^3.1.0",
+    "micromark-extension-gfm": "^3.0.0",
+    "lucide-react": "^0.468.0"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.0",
+    "react": "18.3.1",
+    "react-dom": "18.3.1",
+    "playwright": "^1.56.0"
+  }
+}

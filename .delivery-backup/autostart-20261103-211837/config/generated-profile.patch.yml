@@ -1,0 +1,4 @@
+# Only use if overriding the bundle's configFile.
+- id: tbea-knowledge
+  config:
+    configFile: "F:/Code/dsh-mcp-tbea-knowledge/config/local.json"

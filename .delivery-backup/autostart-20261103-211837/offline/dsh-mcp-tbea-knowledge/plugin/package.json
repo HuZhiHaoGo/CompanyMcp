@@ -1,0 +1,12 @@
+{
+  "name": "dsh-plugin-tbea-knowledge",
+  "version": "0.2.1",
+  "description": "股份公司知识检索 MCP 桥接与匠宝引用展示，适配 Harness 0.2.2-alpha.2",
+  "type": "module",
+  "main": "lib/index.js",
+  "exports": { ".": "./lib/index.js", "./client": "./lib/client.js", "./package.json": "./package.json" },
+  "files": ["lib", "README.md", "cordis.patch.yml"],
+  "engines": { "dsh": "0.2.2-alpha.2" },
+  "dsh": { "bundle": { "patch": "./cordis.patch.yml" }, "client": { "platform": "web", "inject": ["@deepseek-ai/dsh-client-ui-tool", "@deepseek-ai/dsh-client-ui-renderer", "@deepseek-ai/dsh-client-connection", "@deepseek-ai/dsh-client-ui-commands", "@deepseek-ai/dsh-client-ui-input-trigger", "@deepseek-ai/dsh-client-ui-conversation", "@deepseek-ai/dsh-client-ui-chat"] } },
+  "license": "UNLICENSED"
+}

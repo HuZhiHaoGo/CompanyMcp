@@ -1,0 +1,36 @@
+{
+  "mode": "mock",
+  "port": 17861,
+  "serviceToken": "",
+  "dataDirectory": "../data",
+  "service": { "autoStart": true },
+  "autoRetrieveKnowledge": true,
+  "documentPreview": {
+    "enabled": false,
+    "pdfInfo": "../tools/poppler/Library/bin/pdfinfo.exe",
+    "pdfToPpm": "../tools/poppler/Library/bin/pdftoppm.exe",
+    "office": "",
+    "converters": {}
+  },
+  "knowledgeDirectory": { "mode": "auto", "refreshSeconds": 60 },
+  "retrieval": { "perLibraryTop": 3, "libraryTimeoutMs": 8000, "roundTimeoutMs": 30000 },
+  "platform": {
+    "baseUrl": "https://ai.tbea.com",
+    "accessKey": "",
+    "secretKey": "",
+    "projectId": "",
+    "listPath": "/api/ai_apaas/v1/knowledgeBase?Action=DescribeKnowledgeBases",
+    "searchPath": "/openapi/v1/knowledgeBase?Action=QueryKnowledge",
+    "chunkPath": "/api/ai_apaas/v1/knowledgeBase?Action=DescribeChunk",
+    "assetAuth": "none",
+    "assetApiKey": "",
+    "timeoutMs": 30000,
+    "rerankModelName": "bce-reranker-base-v1",
+    "rankScoreThreshold": 0.4
+  },
+  "knowledgeBases": [
+    { "id": "demo-design", "name": "设计标准（演示）", "description": "产品设计标准与技术要求" },
+    { "id": "demo-plm", "name": "PLM问题处理（演示）", "description": "PLM常见问题与操作指引" }
+  ],
+  "limits": { "top": 10, "maxEvidenceChunks": 5, "maxQueryCharacters": 1024, "maxTextCharacters": 30000, "maxImageBytes": 15728640, "maxCacheBytes": 536870912, "maxSnapshots": 500 }
+}

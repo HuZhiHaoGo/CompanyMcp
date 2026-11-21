@@ -1,0 +1,139 @@
+import fs from 'node:fs/promises';
+import path from 'node:path';
+import { isRecord } from './contracts.ts';
+import type { DocumentPreviewConfig, KnowledgeBase, PlatformConfig, ServiceConfig } from './contracts.ts';
+
+export const PLATFORM_ORIGIN = 'https://ai.tbea.com';
+export const PLATFORM_SEARCH_PATH = '/openapi/v1/knowledgeBase?Action=QueryKnowledge';
+export const PLATFORM_LIST_PATH = '/api/ai_apaas/v1/knowledgeBase?Action=DescribeKnowledgeBases';
+export const PLATFORM_CHUNK_PATH = '/api/ai_apaas/v1/knowledgeBase?Action=DescribeChunk';
+const LEGACY_SEARCH_PATH = '/api/ai_apaas/v1/knowledgebases/query';
+export const RETRIEVAL_DEFAULTS = Object.freeze({ perLibraryTop: 3, libraryTimeoutMs: 8000, roundTimeoutMs: 30000 });
+
+/** 配置只由服务端读取；AK/SK、图片鉴权和服务口令均不进入模型或浏览器。 */
+export async function readConfig(filename: string): Promise<ServiceConfig> {
+  const absolute = path.resolve(filename);
+  let config: unknown;
+  const contents = (await fs.readFile(absolute, 'utf8')).replace(/^\uFEFF/, '');
+  try { config=JSON.parse(contents); } catch { throw new Error('配置文件不是有效 JSON，请检查英文引号、逗号和括号'); }
+  if (!isRecord(config)) throw new Error('配置文件的最外层必须为 JSON 对象');
+  const service = config.service;
+  if (service !== undefined && !isRecord(service)) throw new Error('service 必须为对象');
+  const autoStart = service?.autoStart;
+  if (autoStart !== undefined && typeof autoStart !== 'boolean') throw new Error('service.autoStart 必须为 true 或 false');
+  if (config.autoRetrieveKnowledge !== undefined && typeof config.autoRetrieveKnowledge !== 'boolean') throw new Error('autoRetrieveKnowledge 必须为 true 或 false');
+  const { mode, port, serviceToken, platform: rawPlatform } = config;
+  if (mode !== 'mock' && mode !== 'live') throw new Error('mode 必须为 mock 或 live');
+  if (typeof port !== 'number' || !Number.isInteger(port) || port < 1024 || port > 65535) throw new Error('port 必须在 1024～65535 之间');
+  if (typeof serviceToken !== 'string' || serviceToken.length < 32) throw new Error('服务口令未初始化，请先运行初始化脚本');
+  if (!isRecord(rawPlatform) || rawPlatform.baseUrl !== PLATFORM_ORIGIN) throw new Error('仅允许连接 https://ai.tbea.com');
+  const platform = readPlatform(rawPlatform, mode);
+
+  const entries: unknown = config.knowledgeBases ?? [];
+  if (!Array.isArray(entries)) throw new Error('知识库 id 和名称必须为非空字符串');
+  const knowledgeBases: KnowledgeBase[] = entries.map((entry: unknown) => {
+    if (!isRecord(entry) || typeof entry.id !== 'string' || !entry.id.trim() || typeof entry.name !== 'string' || !entry.name.trim()) {
+      throw new Error('知识库 id 和名称必须为非空字符串');
+    }
+    return { ...entry, id: entry.id, name: entry.name, description: typeof entry.description === 'string' ? entry.description : undefined };
+  });
+  if (new Set(knowledgeBases.map(k => k.id)).size !== knowledgeBases.length) throw new Error('知识库 id 不能重复');
+  const directory = config.knowledgeDirectory ?? {};
+  if (!isRecord(directory)) throw new Error('knowledgeDirectory 必须为对象');
+  // 旧配置有静态清单时保留原授权范围，由管理员显式启用自动发现。
+  const directoryMode = directory.mode ?? (knowledgeBases.length || mode === 'mock' ? 'static' : 'auto');
+  if (directoryMode !== 'auto' && directoryMode !== 'static') throw new Error('knowledgeDirectory.mode 必须为 auto 或 static');
+  const refreshSeconds = directory.refreshSeconds ?? 60;
+  if (typeof refreshSeconds !== 'number' || !Number.isInteger(refreshSeconds) || refreshSeconds < 1 || refreshSeconds > 3600) throw new Error('knowledgeDirectory.refreshSeconds 必须为 1～3600 的整数');
+  if ((mode === 'mock' || directoryMode === 'static') && !knowledgeBases.length) throw new Error('演示或静态模式需要配置至少一个知识库');
+  if (mode === 'live' && directoryMode === 'static' && knowledgeBases.some(k => k.id.startsWith('demo-'))) throw new Error('正式静态模式不能使用演示知识库 ID');
+  if (config.dataDirectory && typeof config.dataDirectory !== 'string') throw new Error('dataDirectory 必须为目录路径');
+  const dataDirectory = path.resolve(path.dirname(absolute), typeof config.dataDirectory === 'string' && config.dataDirectory ? config.dataDirectory : '../data');
+  const limits = { top: 10, maxEvidenceChunks: 5, maxQueryCharacters: 1024, maxTextCharacters: 30000, maxImageBytes: 15 * 1024 * 1024, maxCacheBytes: 512 * 1024 * 1024, maxSnapshots: 500, ...(isRecord(config.limits) ? config.limits : {}) };
+  for (const [key, value] of Object.entries(limits)) if (!Number.isSafeInteger(value) || value < 1) throw new Error(`limits.${key} 必须为正整数`);
+  if (limits.top > 20 || limits.maxEvidenceChunks > 20 || limits.maxSnapshots > 10000 || limits.maxQueryCharacters > 1024) throw new Error('检索数量、快照数量或 query 长度超过限制');
+  const overrides = config.retrieval ?? {};
+  if (!isRecord(overrides)) throw new Error('retrieval 必须为对象');
+  const retrieval = { ...RETRIEVAL_DEFAULTS, ...overrides };
+  for (const [key, max] of Object.entries({ perLibraryTop: 20, libraryTimeoutMs: 60000, roundTimeoutMs: 100000 }) as [keyof typeof retrieval, number][]) {
+    const value = retrieval[key];
+    if (!Number.isInteger(value) || value < 1 || value > max) throw new Error(`retrieval.${key} 必须为 1～${max} 的整数`);
+  }
+  if (retrieval.libraryTimeoutMs > retrieval.roundTimeoutMs) throw new Error('单库超时不能大于整轮检索超时');
+  const evidenceThreshold = overrides.evidenceScoreThreshold;
+  if (evidenceThreshold !== undefined && (typeof evidenceThreshold !== 'number' || !Number.isFinite(evidenceThreshold) || evidenceThreshold < 0 || evidenceThreshold > 1)) {
+    throw new Error('retrieval.evidenceScoreThreshold 必须为 0～1 的数字');
+  }
+
+  return {
+    ...config, mode, port, serviceToken, platform, knowledgeBases, dataDirectory, limits,
+    retrieval: { ...retrieval, evidenceScoreThreshold: evidenceThreshold },
+    documentPreview: await readDocumentPreview(config.documentPreview, path.dirname(absolute)),
+    service: service && { ...service, autoStart },
+    knowledgeDirectory: { mode: directoryMode, refreshSeconds },
+    // 未配置的旧版本继续允许模型按需检索。
+    autoRetrieveKnowledge: config.autoRetrieveKnowledge ?? true,
+  };
+}
+
+async function readDocumentPreview(value: unknown, directory: string): Promise<DocumentPreviewConfig | undefined> {
+  if (value === undefined) return undefined;
+  if (!isRecord(value) || typeof value.enabled !== 'boolean') throw new Error('documentPreview.enabled 必须为 true 或 false');
+  function program(input: unknown, key: string) {
+    if (input === undefined || input === '') return undefined;
+    if (typeof input !== 'string' || !input.trim()) throw new Error(`documentPreview.${key} 必须为程序路径`);
+    return path.resolve(directory, input);
+  }
+  const { pdfInfo, pdfToPpm, office } = value;
+  const converters: DocumentPreviewConfig['converters'] = {};
+  if (value.converters !== undefined && !isRecord(value.converters)) throw new Error('documentPreview.converters 必须为对象');
+  for (const [format, input] of Object.entries(value.converters ?? {})) {
+    if (!/^[a-z0-9]{2,8}$/.test(format)) throw new Error('转换组件键必须为小写文件扩展名，例如 ofd');
+    converters[format] = program(input, `converters.${format}`);
+  }
+  let info = program(pdfInfo, 'pdfInfo');
+  let ppm = program(pdfToPpm, 'pdfToPpm');
+  if (value.enabled && process.platform === 'win32' && (!info || !ppm)) {
+    const bin = path.resolve(directory, '../tools/poppler/Library/bin');
+    async function bundledProgram(name: string) {
+      const filename = path.join(bin, name);
+      const file = await fs.stat(filename).catch(() => undefined);
+      return file?.isFile() ? filename : undefined;
+    }
+    [info, ppm] = await Promise.all([info ?? bundledProgram('pdfinfo.exe'), ppm ?? bundledProgram('pdftoppm.exe')]);
+  }
+  if (value.enabled && (!info || !ppm)) throw new Error('启用正式原文预览需要配置 pdfInfo 和 pdfToPpm');
+  return { enabled: value.enabled, pdfInfo: info, pdfToPpm: ppm, office: program(office, 'office'), converters };
+}
+
+function readPlatform(raw: Record<string, unknown>, mode: ServiceConfig['mode']): PlatformConfig {
+  function routeFor(key: 'searchPath' | 'listPath' | 'chunkPath', fallback: string) {
+    const value = raw[key] ?? fallback;
+    if (typeof value !== 'string' || !value.trim()) throw new Error(`platform.${key} 必须为有效的接口路径`);
+    const url = new URL(value, PLATFORM_ORIGIN);
+    if (url.origin !== PLATFORM_ORIGIN || url.username || url.password || url.hash) throw new Error(`platform.${key} 指向不允许的地址`);
+    const route = url.pathname + url.search;
+    // 旧 local.json 无需改写，也不会继续调用内网联调失败的旧检索地址。
+    return key === 'searchPath' && route === LEGACY_SEARCH_PATH ? PLATFORM_SEARCH_PATH : route;
+  }
+  function text(key: string) {
+    const value = raw[key];
+    if (value != null && typeof value !== 'string') throw new Error(`platform.${key} 必须为字符串`);
+    return value ?? undefined;
+  }
+  const threshold = raw.rankScoreThreshold ?? 0.4;
+  if (typeof threshold !== 'number' || !Number.isFinite(threshold) || threshold < 0 || threshold > 1) throw new Error('platform.rankScoreThreshold 必须为 0～1 的数字');
+  const timeout = raw.timeoutMs;
+  if (timeout != null && (typeof timeout !== 'number' || !Number.isInteger(timeout) || timeout < 0 || timeout > 4294967295)) throw new Error('platform.timeoutMs 必须为有效的毫秒数');
+  if (mode === 'live') {
+    for (const key of ['accessKey', 'secretKey', 'projectId', 'rerankModelName']) {
+      if (!text(key)?.trim()) throw new Error(`正式模式缺少 ${key}`);
+    }
+  }
+  return {
+    ...raw, baseUrl: PLATFORM_ORIGIN, rankScoreThreshold: threshold, timeoutMs: timeout ?? undefined,
+    accessKey: text('accessKey'), secretKey: text('secretKey'), projectId: text('projectId'),
+    rerankModelName: text('rerankModelName'), assetAuth: text('assetAuth'), assetApiKey: text('assetApiKey'),
+    searchPath: routeFor('searchPath', PLATFORM_SEARCH_PATH), listPath: routeFor('listPath', PLATFORM_LIST_PATH), chunkPath: routeFor('chunkPath', PLATFORM_CHUNK_PATH),
+  };
+}

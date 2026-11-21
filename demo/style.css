@@ -1,0 +1,45 @@
+/* 仅独立演示页提供宿主主题样本；正式插件只消费 DSH 已发布的变量。
+   色值、字体栈、圆角及字号层级对照固定版本 ui-theme 和 Button.sm。 */
+body {
+  --dsw-font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei","Helvetica Neue",Helvetica,Arial,sans-serif;
+  --ds-font-family-code:Consolas,"Microsoft YaHei",monospace;
+  --dsh-content-font-size:14px;
+  --dsh-content-font-delta:calc(var(--dsh-content-font-size) - 14px);
+  --dsh-content-font-size-secondary:min(calc(var(--dsh-content-font-size) - 1px),max(13px,calc(var(--dsh-content-font-size) - 2px)));
+  --dsh-content-font-delta-secondary:calc(var(--dsh-content-font-size-secondary) - 13px);
+  --dsw-radius-xs:4px; --dsw-radius-sm:8px; --dsw-radius-md:12px; --dsw-radius-lg:16px; --dsw-radius-panel:28px;
+  --dsw-alias-bg-base:#fff; --dsw-alias-bg-layer-1:#fff; --dsw-specific-input-major:#fff;
+  --dsw-alias-label-primary:#0f1115; --dsw-alias-label-secondary:#61666b; --dsw-alias-label-tertiary:#81858c;
+  --dsw-alias-border-l2:rgba(0,0,0,.1);
+  --dsw-alias-interactive-bg-hover:rgba(38,49,72,.06); --dsw-alias-interactive-bg-active:rgba(38,49,72,.1);
+  --dsw-alias-markdown-code-block:#f9fafb; --dsw-alias-state-business-primary:#4176e6; --dsw-alias-state-business-tertiary:#e4edfd;
+  --dsw-alias-state-error-primary:#ec1313; --dsw-alias-bg-mask-1:rgba(0,0,0,.24);
+  margin:0; background:var(--dsw-alias-bg-base); color:var(--dsw-alias-label-primary); font:var(--dsh-content-font-size)/1.7 var(--dsw-font-family);
+}
+body[data-ds-dark-theme] {
+  --dsw-alias-bg-base:#151517; --dsw-alias-bg-layer-1:#232324; --dsw-specific-input-major:#2c2c2e;
+  --dsw-alias-label-primary:#f9fafb; --dsw-alias-label-secondary:#adb2b8; --dsw-alias-label-tertiary:#81858c;
+  --dsw-alias-border-l2:rgba(255,255,255,.12);
+  --dsw-alias-interactive-bg-hover:rgba(255,255,255,.08); --dsw-alias-interactive-bg-active:rgba(255,255,255,.14);
+  --dsw-alias-markdown-code-block:#1b1b1c; --dsw-alias-state-business-primary:#7aaaff; --dsw-alias-state-business-tertiary:#34415b;
+  --dsw-alias-state-error-primary:#f25a5a; --dsw-alias-bg-mask-1:rgba(0,0,0,.5);
+}
+* { box-sizing:border-box; }
+main { width:min(900px,100%); margin:0 auto; padding:0 24px 24px; }
+header { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px; min-height:64px; padding:12px 0; border-bottom:1px solid var(--dsw-alias-border-l2); }
+.demo-header-actions { display:flex; align-items:center; gap:12px; }
+.demo-header-actions>span,.demo-note { color:var(--dsw-alias-label-tertiary); font-size:12px; line-height:20px; }
+.demo-answer { padding:28px 0 16px; min-height:280px; }
+h1 { margin:0 0 16px; font-size:20px; line-height:30px; font-weight:500; }
+.demo-composer { margin-top:16px; padding:16px; border:1px solid var(--dsw-alias-border-l2); border-radius:var(--dsw-radius-panel); background:var(--dsw-specific-input-major); }
+.demo-composer .demo-note { margin:0 0 8px; }
+.demo-composer textarea { display:block; width:100%; min-height:80px; resize:vertical; padding:8px 0; border:0; outline:none; background:transparent; color:inherit; font:inherit; }
+.demo-composer textarea:focus-visible { outline:2px solid var(--dsw-alias-state-business-primary); outline-offset:3px; border-radius:4px; }
+.demo-add,.demo-theme { display:inline-flex; align-items:center; justify-content:center; width:28px; height:28px; padding:0; border:0; border-radius:var(--dsw-radius-sm); color:var(--dsw-alias-label-secondary); background:transparent; cursor:pointer; }
+.demo-add:hover,.demo-theme:hover { background:var(--dsw-alias-interactive-bg-hover); }
+.demo-menu { display:flex; align-items:center; flex-wrap:wrap; gap:8px; margin:8px 0; padding:8px; border:1px solid var(--dsw-alias-border-l2); border-radius:var(--dsw-radius-md); background:var(--dsw-alias-bg-layer-1); }
+.demo-menu button { min-height:28px; padding:0 8px; border:0; border-radius:var(--dsw-radius-sm); background:transparent; color:inherit; font:13px/20px var(--dsw-font-family); cursor:pointer; }
+.demo-menu button:hover { background:var(--dsw-alias-interactive-bg-hover); }
+.demo-menu span { color:var(--dsw-alias-label-tertiary); font-size:12px; }
+.demo-add:focus-visible,.demo-theme:focus-visible,.demo-menu button:focus-visible { outline:2px solid var(--dsw-alias-state-business-primary); outline-offset:2px; }
+@media(max-width:480px) { main { padding:0 16px 16px; } .demo-composer { padding:12px; } }
