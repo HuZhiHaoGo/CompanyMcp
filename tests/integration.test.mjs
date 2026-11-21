@@ -76,6 +76,74 @@ test('DSH Host 适配器使用真实 MCP，将模型文字与持久展示 meta �
   assert.equal(page.value.bytes[0], 137);
 });
 
+test('DSH 托管服务通过真实 MCP 在手动和按需入口使用当前内网模型', async t => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'tbea-semantic-host-'));
+  const socket = net.createServer();
+  await new Promise(resolve => socket.listen(0, '127.0.0.1', resolve));
+  const port = socket.address().port;
+  await new Promise(resolve => socket.close(resolve));
+  const config = JSON.parse(await fs.readFile(new URL('../config/example.json', import.meta.url), 'utf8'));
+  Object.assign(config, { mode: 'live', port, serviceToken: 'x'.repeat(64), dataDirectory: directory, autoRetrieveKnowledge: true });
+  Object.assign(config.platform, { projectId: 'test-project', accessKey: 'test-access', secretKey: 'test-secret' });
+  const file = path.join(directory, 'config.json');
+  await fs.writeFile(file, JSON.stringify(config));
+  const passage = '员工证件遗失补办：在行政服务平台申请，收到批准后领取新卡。';
+  const originalFetch = globalThis.fetch;
+  t.mock.method(globalThis, 'fetch', (target, options) => {
+    const url = new URL(typeof target === 'string' || target instanceof URL ? target : target.url);
+    if (url.hostname === '127.0.0.1') return originalFetch(target, options);
+    assert.equal(url.hostname, 'ai.tbea.com');
+    if (url.searchParams.get('Action') === 'DescribeKnowledgeBases') {
+      return Promise.resolve(Response.json({ total: 1, data: [{ id: 'regulations', name: '公司规章制度' }] }));
+    }
+    return Promise.resolve(Response.json({ chunks: [
+      { knowledgebase_id: 'regulations', chunk_id: 'badge', document_id: 'staff', document_name: '行政制度', rank_score: 0.85, content: passage },
+    ] }));
+  });
+  const effects = [], tools = new Map();
+  const selection = { provider: 'current-intranet', model: 'intranet-model' };
+  let preStep, route, modelCalls = 0;
+  const ctx = {
+    on(_name, hook) { preStep = hook; }, effect(fn) { effects.push(fn()); },
+    tools: { register: tool => tools.set(tool.name, tool) },
+    connection: { fetch: { register: value => { route = value; } } },
+    get(name) {
+      if (name === 'settings') return { describe: () => [{ ns: 'providers', value: { baseURL: 'https://model.tbea.com/v1' } }] };
+      if (name === 'llm') return {
+        listConfigurableProviders: () => [{ provider: selection.provider, settingsNs: 'providers', settingsPath: [] }],
+        async prepareCall(config) {
+          assert.equal(config.provider, selection.provider);
+          assert.equal(config.model, selection.model);
+          return { config, async *stream(request) {
+            const { candidates } = JSON.parse(request.messages[0].content[0].text);
+            assert.equal(candidates[0].text, passage);
+            modelCalls++;
+            yield { type: 'text-delta', index: 0, text: JSON.stringify({ decisions: [{ id: 1, kind: 'direct', topics: [0], quote: passage }] }) };
+            yield { type: 'finish', reason: { kind: 'stop' } };
+          } };
+        },
+      };
+    },
+  };
+  t.after(async () => {
+    for (const effect of effects.reverse()) await effect();
+    await fs.rm(directory, { recursive: true, force: true });
+  });
+  await apply(ctx, { configFile: file });
+  const agent = { id: 'policy-session', ctx, model: { current: () => selection } };
+  const signal = AbortSignal.timeout(10000);
+  assert.equal((await requestDisplay(route, 'select', { sessionId: agent.id, selected: true })).ok, true);
+  const query = '工牌丢了怎么补？';
+  const decision = await preStep({ agent, signal, modelSelection: selection }, async () => ({
+    kind: 'enter', messages: [{ role: 'user', id: 'ask', source: { kind: 'user' }, content: [{ type: 'text', text: query }] }],
+  }));
+  assert.equal(decision.messages[1].source.view.count, 1);
+  assert.equal(modelCalls, 1);
+  const result = await tools.get('mcp__tbea__search_knowledge').execute({ query }, { agent, signal });
+  assert.equal(result.model.citations[0].chunkId, 'badge');
+  assert.equal(modelCalls, 2);
+});
+
 test('DSH 注册后的工具动态使用鉴权目录摘要，预热与逐库检索共享授权缓存', async t => {
   const { app, config, directory, base } = await fixture(t, 'live');
   const file = path.join(directory, 'config.json');

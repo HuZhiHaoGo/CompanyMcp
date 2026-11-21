@@ -1,5 +1,7 @@
 import { isRecord } from '../../src/contracts.ts';
 import type { PublicCitation } from '../../src/contracts.ts';
+import { fromMarkdown } from 'mdast-util-from-markdown';
+import type { Nodes } from 'mdast';
 
 const searchTool = 'mcp__tbea__search_knowledge';
 const detailTool = 'mcp__tbea__get_chunk_detail';
@@ -27,7 +29,7 @@ export interface CitationSessionBinding {
 }
 
 type CitationReferences = Map<string, Map<number, Set<string> | null>>;
-type SnapshotDocument = Pick<PublicCitation, 'citationId' | 'documentId' | 'documentName' | 'knowledgeBaseId' | 'knowledgeBaseName'>;
+type SnapshotDocument = Pick<PublicCitation, 'citationId' | 'documentId' | 'documentName' | 'knowledgeBaseId' | 'knowledgeBaseName' | 'documentGroupId' | 'documentVersion' | 'effectiveDate'>;
 export type CitationSnapshot =
   | { citations: SnapshotDocument[]; errorRevision?: never }
   | { citations?: never; errorRevision: number };
@@ -45,6 +47,48 @@ function validTurn(value: unknown): value is number {
 function parseJson(text: unknown): unknown {
   if (typeof text !== 'string') return undefined;
   try { return JSON.parse(text); } catch { return undefined; }
+}
+
+export const knowledgeCitationId = /^K[0-9a-f]{8}-[1-9]\d*(?:-[1-9]\d*)?$/;
+
+export function answerCitationIds(entries: readonly unknown[]) {
+  const finalByTurn = new Map<number, Set<string>>();
+  for (const entry of entries) {
+    if (!isRecord(entry) || entry.type !== 'event' || !isRecord(entry.event) || entry.event.type !== 'assistant/message') continue;
+    const { data } = entry.event;
+    if (!isRecord(data) || !validTurn(data.turn) || !isRecord(data.message) || !Array.isArray(data.message.content)) continue;
+    const text = data.message.content.flatMap(part => isRecord(part) && part.type === 'text' && typeof part.text === 'string' ? [part.text] : []).join('\n');
+    if (!text.trim()) continue;
+    const ids = new Set<string>();
+    const pending: Nodes[] = [fromMarkdown(text)];
+    for (let node = pending.pop(); node; node = pending.pop()) {
+      if (node.type === 'link') {
+        if (knowledgeCitationId.test(node.url)) ids.add(node.url);
+      } else if (node.type === 'text') {
+        for (const match of node.value.matchAll(/\[(K[0-9a-f]{8}-[1-9]\d*(?:-[1-9]\d*)?)\]/g)) ids.add(match[1]);
+      } else if ('children' in node) {
+        pending.push(...node.children);
+      }
+    }
+    finalByTurn.set(data.turn, ids);
+  }
+  return finalByTurn;
+}
+
+function containsCitation(selection: Set<string> | null | undefined, id: string) {
+  return selection === null || selection?.has(id) === true;
+}
+
+export async function resolveAnswerCitation(entries: readonly unknown[], turn: number, id: string,
+  loadSnapshot: (snapshotId: string) => Promise<unknown>): Promise<SnapshotDocument | undefined> {
+  if (!answerCitationIds(entries).get(turn)?.has(id)) return;
+  const documents = [];
+  for (const [snapshotId, turns] of citationReferences(entries)) {
+    if (!id.startsWith('K' + snapshotId.slice(0, 8) + '-') || !containsCitation(turns.get(turn), id)) continue;
+    const snapshot = await loadSnapshot(snapshotId);
+    documents.push(...snapshotDocuments(snapshot).filter(doc => doc.citationId === id && doc.knowledgeBaseId && doc.documentId));
+  }
+  return documents.length === 1 ? documents[0] : undefined;
 }
 
 function addReference(references: CitationReferences, snapshotId: string | undefined, turn: number | undefined, citationId: string | null) {
@@ -139,31 +183,37 @@ export function snapshotDocuments(snapshot: unknown): SnapshotDocument[] {
         documentName: typeof value.documentName === 'string' && value.documentName ? value.documentName : '知识库文档',
         knowledgeBaseId: typeof value.knowledgeBaseId === 'string' ? value.knowledgeBaseId : '',
         knowledgeBaseName: typeof value.knowledgeBaseName === 'string' ? value.knowledgeBaseName : '',
+        documentGroupId: typeof value.documentGroupId === 'string' && /^[0-9a-f]{64}$/.test(value.documentGroupId) ? value.documentGroupId : undefined,
+        documentVersion: typeof value.documentVersion === 'string' ? value.documentVersion : undefined,
+        effectiveDate: typeof value.effectiveDate === 'string' ? value.effectiveDate : undefined,
       };
     });
   });
 }
 
-export function mergeCitedDocuments(references: CitationReferences, snapshots: ReadonlyMap<string, CitationSnapshot>) {
-  const grouped = new Map<string, SnapshotDocument & { key: string; turns: Set<number> }>();
+export function mergeCitedDocuments(references: CitationReferences, snapshots: ReadonlyMap<string, CitationSnapshot>, citedByTurn = new Map<number, Set<string>>()) {
+  const grouped = new Map<string, SnapshotDocument & { key: string; turns: Set<number>; citedTurns: Set<number>; libraries: Set<string> }>();
   let unavailable = false;
   for (const [snapshotId, turns] of references) {
     for (const citation of snapshots.get(snapshotId)?.citations ?? []) {
       for (const [turn, selected] of turns) {
-        if (selected && !selected.has(citation.citationId)) continue;
+        if (!containsCitation(selected, citation.citationId)) continue;
         if (!citation.documentId || !citation.knowledgeBaseId) {
           unavailable = true;
           continue;
         }
-        const key = JSON.stringify([citation.knowledgeBaseId, citation.documentId]);
-        const document = grouped.get(key) ?? { ...citation, key, turns: new Set<number>() };
+        const key = citation.documentGroupId ?? JSON.stringify([citation.knowledgeBaseId, citation.documentId, citation.documentVersion, citation.effectiveDate]);
+        const document = grouped.get(key) ?? { ...citation, key, turns: new Set<number>(), citedTurns: new Set<number>(), libraries: new Set<string>() };
         document.turns.add(turn);
+        if (citedByTurn.get(turn)?.has(citation.citationId)) document.citedTurns.add(turn);
+        if (citation.knowledgeBaseName) document.libraries.add(citation.knowledgeBaseName);
         grouped.set(key, document);
       }
     }
   }
   const documents = [...grouped.values()].map(document => ({
     ...document, turns: [...document.turns].sort((a, b) => b - a),
+    citedTurns: [...document.citedTurns].sort((a, b) => b - a), libraries: [...document.libraries],
   })).sort((a, b) => b.turns[0] - a.turns[0]);
   return { documents, unavailable };
 }

@@ -3,15 +3,82 @@ import type { MouseEvent } from 'react';
 import { FileText, LoaderCircle } from 'lucide-react';
 import { DocumentReader } from './library-browser.tsx';
 import type { LibraryBridge } from './library-browser.tsx';
-import { citationReferences, mergeCitedDocuments, readCitationHistory, snapshotDocuments } from './cited-documents.ts';
+import { answerCitationIds, citationReferences, knowledgeCitationId, mergeCitedDocuments, readCitationHistory, resolveAnswerCitation, snapshotDocuments } from './cited-documents.ts';
 import type { CitationSessionBinding, CitationSnapshot } from './cited-documents.ts';
 
 type SnapshotBridge = (endpoint: 'snapshot', args: { snapshotId: string }, signal: AbortSignal) => Promise<unknown>;
 type OpenView = (view: string, focus: string) => void;
+type CitationBridge = SnapshotBridge & LibraryBridge;
 interface CitedDocumentsProps {
   binding: CitationSessionBinding;
-  bridge: SnapshotBridge & LibraryBridge;
+  bridge: CitationBridge;
   openView: OpenView;
+}
+
+type PreviewState = { document?: Awaited<ReturnType<typeof resolveAnswerCitation>>; error?: string };
+
+export function CitationLinks({ binding, bridge }: { binding?: CitationSessionBinding; bridge: CitationBridge }) {
+  const marker = useRef<HTMLSpanElement>(null);
+  const dialog = useRef<HTMLDialogElement>(null);
+  const request = useRef<AbortController>();
+  const [preview, setPreview] = useState<PreviewState>();
+  const open = preview !== undefined;
+  useEffect(() => {
+    if (open && dialog.current && !dialog.current.open) dialog.current.showModal();
+  }, [open]);
+  useEffect(() => {
+    if (!binding) return;
+    const { eventSource } = binding;
+    // The composer and transcript are siblings in the session content container.
+    const scopeSelector = '[data-conversation-content][data-conversation-session]';
+    const scope = marker.current?.closest(scopeSelector);
+    if (!scope || scope.getAttribute('data-conversation-session') !== binding.sessionId) return;
+    function click(event: Event) {
+      if (!(event.target instanceof Element)) return;
+      // Harness renders a settled local Markdown link as a button with the decoded destination in title.
+      const target = event.target.closest('button[title],a[href]');
+      const id = target?.getAttribute(target.tagName === 'BUTTON' ? 'title' : 'href');
+      const row = target?.closest('[data-chat-turn][data-chat-flow-kind="assistant"],[data-chat-turn][data-chat-flow-kind="turn-tail"]');
+      if (!id || !knowledgeCitationId.test(id) || !row || row.closest(scopeSelector) !== scope) return;
+      const turn = Number(row.getAttribute('data-chat-turn'));
+      if (!Number.isSafeInteger(turn) || turn < 0) return;
+      event.preventDefault();
+      event.stopPropagation();
+      request.current?.abort();
+      const controller = new AbortController();
+      request.current = controller;
+      setPreview({});
+      const missing = '对应轮次没有可打开的知识库引用。';
+      void resolveAnswerCitation(eventSource.getSnapshot().entries, turn, id,
+        snapshotId => bridge('snapshot', { snapshotId }, controller.signal)).then(document => {
+        if (!controller.signal.aborted) setPreview(document ? { document } : { error: missing });
+      }, error => {
+        if (!controller.signal.aborted) setPreview({ error: error instanceof Error ? error.message : missing });
+      });
+    }
+    scope.addEventListener('click', click, true);
+    return () => {
+      scope.removeEventListener('click', click, true);
+      request.current?.abort();
+    };
+  }, [binding, bridge]);
+
+  const close = () => dialog.current?.close();
+  const document = preview?.document;
+  return <>
+    <span hidden ref={marker} />
+    {open && <dialog ref={dialog} className="tbea-citation-dialog" aria-label="知识库引用原文"
+      onClose={() => { request.current?.abort(); setPreview(undefined); }}>
+      <div className="tbea-library">
+        {document ? <DocumentReader bridge={bridge} libraryId={document.knowledgeBaseId}
+          documentInfo={{ id: document.documentId, name: document.documentName }} requestPreview
+          backLabel="关闭引用预览" close={close} />
+          : <div className="tbea-library-state" role={preview?.error ? 'alert' : 'status'}>
+            {preview?.error ?? '正在核对引用…'} <button type="button" className="tbea-library-button" onClick={close}>关闭</button>
+          </div>}
+      </div>
+    </dialog>}
+  </>;
 }
 
 function useCitationSnapshots(bridge: SnapshotBridge, ids: string, revision: number) {
@@ -99,9 +166,10 @@ function SessionDocuments({ binding, bridge, openView }: CitedDocumentsProps) {
     return () => controller.abort();
   }, [binding, revision]);
   const references = useMemo(() => citationReferences(history.entries), [history]);
+  const citedByTurn = useMemo(() => answerCitationIds(history.entries), [history]);
   const ids = [...references.keys()];
   const snapshots = useCitationSnapshots(bridge, JSON.stringify(ids.sort()), revision);
-  const { documents, unavailable } = useMemo(() => mergeCitedDocuments(references, snapshots), [references, snapshots]);
+  const { documents, unavailable } = useMemo(() => mergeCitedDocuments(references, snapshots, citedByTurn), [references, snapshots, citedByTurn]);
   const loading = historyStatus.loading || ids.some(id => {
     const snapshot = snapshots.get(id);
     return !snapshot || (snapshot.errorRevision !== undefined && snapshot.errorRevision < revision);
@@ -128,7 +196,10 @@ function SessionDocuments({ binding, bridge, openView }: CitedDocumentsProps) {
             <button type="button" className="tbea-cited-name" onClick={() => setSelected(item.key)}>
               <FileText size={16} aria-hidden="true" /><span>{item.documentName}</span>
             </button>
-            <p>{item.knowledgeBaseName || '公司知识库'} · {item.turns.length === 1 ? `第 ${item.turns[0]} 轮` : `引用于 ${item.turns.length} 轮`}</p>
+            <p>{item.libraries.join('、') || '公司知识库'} · {item.turns.length === 1 ? `第 ${item.turns[0]} 轮` : `引用于 ${item.turns.length} 轮`}
+              {item.citedTurns.length > 0 && <span className="tbea-cited-status">正文已引用</span>}
+            </p>
+            {(item.documentVersion || item.effectiveDate) && <p>{[item.documentVersion, item.effectiveDate && `${item.effectiveDate} 生效`].filter(Boolean).join(' · ')}</p>}
           </div>
           {item.turns.length === 1
             ? <button type="button" className="tbea-library-button" onClick={event => showChatTurn(event, openView, item.turns[0])}>查看引用</button>

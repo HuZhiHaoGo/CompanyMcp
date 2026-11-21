@@ -8,8 +8,12 @@ import { SearchGate } from './gate.ts';
 import { SharedTasks } from './shared-tasks.ts';
 import { RETRIEVAL_DEFAULTS } from './config.ts';
 import { retrieveLibraries, selectEvidence } from './retrieval.ts';
+import type { CandidateDecision } from './retrieval.ts';
 import { summarizeKnowledgeBases } from './catalog-summary.ts';
-import { checkEvidence, standaloneCalculation } from './evidence.ts';
+import { checkEvidence, evidenceScore, standaloneCalculation } from './evidence.ts';
+import type { EvidenceDecision, EvidenceText } from './evidence.ts';
+import { evidenceFingerprint, reviewCandidates } from './semantic.ts';
+import type { SemanticModel, SemanticOutcome } from './semantic.ts';
 import type { Citation, Coverage, Fetcher, ImageData, JsonRecord, KnowledgeBase, Mode, ServiceConfig, Snapshot } from './contracts.ts';
 
 const allSources = (snapshot: Snapshot) => snapshot.citations.flatMap(c => [c, ...(c.equivalentSources || [])]);
@@ -24,6 +28,7 @@ export interface KnowledgeResult {
     mode: Mode;
     coverage?: Coverage;
     evidenceStatus?: ReturnType<typeof modelResult>['evidenceStatus'];
+    clarification?: string;
   };
 }
 
@@ -77,7 +82,7 @@ export class KnowledgeService {
     return { ...summarizeKnowledgeBases(catalog), expiresAt };
   }
 
-  async search(args: JsonRecord, signal?: AbortSignal, manuallySelected = false): Promise<KnowledgeResult> {
+  async search(args: JsonRecord, signal?: AbortSignal, manuallySelected = false, semanticModel?: SemanticModel): Promise<KnowledgeResult> {
     const query = typeof args.query === 'string' ? args.query.trim() : '';
     if (!query || query.length > this.config.limits.maxQueryCharacters) throw new PlatformError('INVALID_QUERY', `问题不能为空，且不能超过${this.config.limits.maxQueryCharacters}字符`);
     const top = args.top ?? this.config.limits.top;
@@ -92,6 +97,10 @@ export class KnowledgeService {
     const settings = { ...RETRIEVAL_DEFAULTS, ...this.config.retrieval };
     const deadline = AbortSignal.timeout(settings.roundTimeoutMs);
     const roundSignal = signal ? AbortSignal.any([signal, deadline]) : deadline;
+    const live = this.config.mode === 'live';
+    const evidence = live ? checkEvidence(query, settings.synonyms) : undefined;
+    const id = randomUUID();
+    const started = performance.now();
     let catalog: KnowledgeBase[];
     try { catalog = await this.catalog(roundSignal); }
     catch (error) {
@@ -109,28 +118,110 @@ export class KnowledgeService {
       if (selected.length) ids = new Set(selected);
     }
     if (!ids.size) throw new PlatformError('EMPTY_KNOWLEDGE_DIRECTORY', '当前项目没有可查询的知识库，请检查项目和授权');
+    if (evidence?.clarification) {
+      signal?.throwIfAborted();
+      const snapshot: Snapshot = { schema: 'tbea-snapshot/v1', id, mode: this.config.mode, query,
+        createdAt: new Date().toISOString(), totalCount: 0, citations: [] };
+      await this.store.save(snapshot, signal);
+      signal?.throwIfAborted();
+      return this.result(snapshot);
+    }
+    const limit = Math.min(top, this.config.limits.maxEvidenceChunks ?? 5);
+    const threshold = live ? this.evidenceThreshold() : 0;
+    let review: Awaited<ReturnType<typeof reviewCandidates>>;
+    let semanticClarification = false;
+    let semanticDeadline: AbortSignal | undefined;
+    let semantic: SemanticOutcome = semanticModel ? 'local' : 'unavailable';
+    const item = (citation: Citation) => ({ text: citation.modelText, documentName: citation.documentName,
+      documentVersion: citation.documentVersion, effectiveDate: citation.effectiveDate });
+    const noEvidence: EvidenceDecision = { topics: [], directTopics: [], quality: 0, reason: 'semantic-unrelated' };
+    function evaluate(candidate: EvidenceText): EvidenceDecision {
+      const local = evidence!.evaluate(candidate);
+      if (semanticClarification) return noEvidence;
+      if (!review) return local;
+      const fingerprint = evidenceFingerprint(candidate);
+      const decision = review.decisions.get(fingerprint);
+      if (decision?.kind === 'unrelated') return local.directTopics.length && evidence!.confident(candidate) ? local : noEvidence;
+      const scopes = evidence!.semanticTopics(candidate);
+      const topics = decision?.kind === 'direct' ? decision.topics.filter(topic => scopes.includes(topic)) : [];
+      return topics.length
+        ? { topics, directTopics: topics, quality: 2, reason: 'semantic-direct' }
+        : local;
+    }
+    const select = (chunks: readonly JsonRecord[], report?: (candidate: CandidateDecision) => void) =>
+      selectEvidence(chunks, catalog, ids, id, limit, threshold, evidence && evaluate, report);
+    const passes: { phase: string; attempted: number; completed: number; ms: number }[] = [];
+    const candidates: CandidateDecision[] = [];
+    const ranked = evidence ? catalog.filter(library => ids.has(library.id) && evidence.libraryPriority(library)).map(library => library.id) : [];
+    const shortlist = (chunks: readonly JsonRecord[]) => chunks.filter(raw => ids.has(citationKnowledgeBaseId(raw)) && evidenceScore(raw.rank_score) >= threshold)
+      .sort((a, b) => evidenceScore(b.rank_score) - evidenceScore(a.rank_score)).slice(0, 8)
+      .map(raw => normalizeCitation(raw, 0, id, catalog));
     const result = this.config.mode === 'mock'
       ? { chunks: query.includes('无结果') ? [] : mockChunks([...ids]), coverage: undefined }
-      : await retrieveLibraries({ config: this.config, gate: this.searchGate, settings, query, ids, top, roundSignal, signal, fetcher: this.fetcher });
+      : await retrieveLibraries({
+        config: this.config, gate: this.searchGate, settings, query, ids, top, roundSignal, signal, fetcher: this.fetcher,
+        priorityIds: ranked,
+        supplement: evidence?.supplement && evidence.supplement.length <= this.config.limits.maxQueryCharacters ? evidence.supplement : undefined,
+        enough: evidence && (chunks => evidence.summarize(select(chunks).map(c => ({ ...c, text: c.modelText }))).status === 'matched'),
+        semanticSupplement: evidence && semanticModel && settings.semanticReview !== false ? async chunks => {
+          const original = select(chunks).map(item);
+          if (evidence.summarize(original.filter(evidence.confident)).status === 'matched') return undefined;
+          semanticDeadline = AbortSignal.any([roundSignal, AbortSignal.timeout(10000)]);
+          review = await reviewCandidates(semanticModel, query, shortlist(chunks), evidence.semanticQueryTopics, semanticDeadline);
+          if (!review) { semantic = 'fallback'; return undefined; }
+          const revised = evidence.summarizeDecisions(select(chunks).map(c => evaluate(item(c))));
+          if (review.needsClarification && revised.status === 'none') {
+            semanticClarification = true;
+            semantic = 'clarification';
+            return undefined;
+          }
+          semantic = 'reviewed';
+          const rewrite = review.rewrite;
+          if (review.needsClarification || revised.status === 'matched' || !rewrite || query.includes(rewrite)
+              || /[<>{}\[\]\r\n]|https?:\/\//iu.test(rewrite) || query.length + rewrite.length + 1 > this.config.limits.maxQueryCharacters) return undefined;
+          semantic = 'reformulated';
+          return query + ' ' + rewrite;
+        } : undefined,
+        verifySupplement: evidence && semanticModel ? async chunks => {
+          if (!review || !semanticDeadline || semanticDeadline.aborted) return;
+          const novel = shortlist(chunks).filter(c => !review!.checked.has(evidenceFingerprint(item(c))));
+          if (!novel.length) return;
+          const next = await reviewCandidates(semanticModel, query, novel, evidence.semanticQueryTopics, semanticDeadline);
+          if (!next) return;
+          for (const [fingerprint, decision] of next.decisions) review.decisions.set(fingerprint, decision);
+        } : undefined,
+        passFinished: settings.diagnostics ? pass => passes.push(pass) : undefined,
+      });
     signal?.throwIfAborted();
-    const id = randomUUID();
-    const limit = Math.min(top, this.config.limits.maxEvidenceChunks ?? 5);
-    const live = this.config.mode === 'live';
-    const threshold = this.evidenceThreshold();
-    const citations = selectEvidence(result.chunks, catalog, ids, id, limit, live ? threshold : 0, live ? checkEvidence(query).matches : undefined);
-    const snapshot: Snapshot = { schema: 'tbea-snapshot/v1', id, mode: this.config.mode, query, createdAt: new Date().toISOString(), totalCount: result.chunks.length, coverage: result.coverage, citations };
+    const citations = select(result.chunks, settings.diagnostics && live ? candidate => candidates.push(candidate) : undefined);
+    if (review) for (const citation of citations.flatMap(c => [c, ...(c.equivalentSources ?? [])])) {
+      const input = item(citation);
+      const decision = evaluate(input);
+      const fingerprint = evidenceFingerprint(input);
+      const reviewed = review.decisions.get(fingerprint);
+      if (decision.reason === 'semantic-direct' && reviewed?.kind === 'direct') {
+        citation.semanticEvidence = { fingerprint, topics: decision.directTopics, quote: reviewed.quote };
+      }
+    }
+    const snapshot: Snapshot = { schema: 'tbea-snapshot/v1', id, mode: this.config.mode, query, createdAt: new Date().toISOString(), totalCount: result.chunks.length,
+      coverage: result.coverage, citations, ...(semanticClarification ? { semanticClarification } : {}) };
     signal?.throwIfAborted();
     await this.store.save(snapshot, signal);
     signal?.throwIfAborted();
+    if (settings.diagnostics && live) console.info(JSON.stringify({
+      event: 'tbea-retrieval', searchId: id, threshold, coverage: result.coverage, passes, candidates, topics: evidence?.diagnosticTopics, semantic,
+      ms: Math.round(performance.now() - started),
+    }));
     return this.result(snapshot);
   }
   private evidenceThreshold() {
     return this.config.retrieval?.evidenceScoreThreshold ?? this.config.platform.rankScoreThreshold ?? 0.4;
   }
   private result(snapshot: Snapshot, citations?: readonly Citation[]): KnowledgeResult {
-    const model = modelResult(snapshot, this.config.limits.maxTextCharacters, citations, this.evidenceThreshold());
+    const model = modelResult(snapshot, this.config.limits.maxTextCharacters, citations, this.evidenceThreshold(), this.config.retrieval?.synonyms);
     return { model, view: {
-      schema: 'tbea-view/v1', snapshotId: snapshot.id, count: snapshot.citations.length, query: snapshot.query, mode: snapshot.mode, coverage: snapshot.coverage, evidenceStatus: model.evidenceStatus,
+      schema: 'tbea-view/v1', snapshotId: snapshot.id, count: snapshot.citations.length, query: snapshot.query, mode: snapshot.mode,
+      coverage: snapshot.coverage, evidenceStatus: model.evidenceStatus, ...(model.clarification ? { clarification: model.clarification } : {}),
     } };
   }
   async snapshot(id: unknown, signal?: AbortSignal) {
@@ -199,8 +290,8 @@ export class KnowledgeService {
       await this.store.saveImage(imageId, image); return image;
     });
   }
-  async call(name: string, args: JsonRecord, signal?: AbortSignal, manuallySelected = false): Promise<KnowledgeResult> {
-    if (name === 'search_knowledge') return this.search(args, signal, manuallySelected);
+  async call(name: string, args: JsonRecord, signal?: AbortSignal, manuallySelected = false, semanticModel?: SemanticModel): Promise<KnowledgeResult> {
+    if (name === 'search_knowledge') return this.search(args, signal, manuallySelected, semanticModel);
     if (name === 'get_chunk_detail') return this.detail(args.snapshotId, args.citationId, signal);
     throw new PlatformError('UNKNOWN_TOOL', '未知工具');
   }

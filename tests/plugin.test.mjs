@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import vm from 'node:vm';
 import { createRequire } from 'node:module';
-import { citationReferences, mergeCitedDocuments, readCitationHistory, snapshotDocuments } from '../plugin/src/cited-documents.ts';
+import { answerCitationIds, citationReferences, mergeCitedDocuments, readCitationHistory, resolveAnswerCitation, snapshotDocuments } from '../plugin/src/cited-documents.ts';
 
 test('浏览器产物符合 Harness 模块工厂和 keyed toolview 注册契约', async () => {
   const require = createRequire(import.meta.url); let module;
@@ -56,6 +56,46 @@ test('浏览器产物符合 Harness 模块工厂和 keyed toolview 注册契约'
 });
 
 const event = (type, data, seq = 0) => ({ type: 'event', event: { type, data, seq } });
+
+test('正文引用按轮次和授权快照解析，文本和代码中的无效编号不会打开原文', async () => {
+  const snapshotId = 'feedcafe-0000-4000-8000-000000000000';
+  const id = 'Kfeedcafe-1';
+  const data = { citations: [{ citationId: id, knowledgeBaseId: 'policy', documentId: 'travel', documentName: '差旅制度' }] };
+  const answer = (turn, text) => event('assistant/message', { turn, message: { content: [{ type: 'text', text }] } });
+  const entries = [
+    event('turn/start', { turn: 1 }),
+    event('user/message', { source: { kind: 'tbea-knowledge-prefetch', view: { schema: 'tbea-view/v1', snapshotId } } }),
+    answer(1, '依据[差旅制度](' + id + ')。代码：`[Kfeedcafe-2]`。'),
+    event('turn/start', { turn: 2 }),
+    answer(2, '上一轮编号[' + id + ']'),
+  ];
+  let reads = 0;
+  const load = async actual => { reads++; assert.equal(actual, snapshotId); return data; };
+  assert.deepEqual([...answerCitationIds(entries).get(1)], [id]);
+  assert.equal((await resolveAnswerCitation(entries, 1, id, load)).documentId, 'travel');
+  assert.equal(await resolveAnswerCitation(entries, 2, id, load), undefined);
+  assert.equal(await resolveAnswerCitation(entries, 1, 'Kfeedcafe-2', load), undefined);
+  assert.equal(reads, 1);
+  await assert.rejects(resolveAnswerCitation(entries, 1, id, async () => { throw new Error('授权已撤回'); }), /授权已撤回/);
+});
+
+test('会话文档按确认过的原文版本归并，并标明哪轮在正文引用', () => {
+  const references = new Map([['feedcafe-id', new Map([[1, null]])], ['a11ce123-id', new Map([[2, null]])]]);
+  const citations = (id, library, group, version) => snapshotDocuments({ citations: [{
+    citationId: id, knowledgeBaseId: library, knowledgeBaseName: library, documentId: 'doc', documentName: '制度',
+    documentGroupId: group.repeat(64), documentVersion: version,
+  }] });
+  const snapshots = new Map([
+    ['feedcafe-id', { citations: citations('Kfeedcafe-1', '甲库', 'a', '2026') }],
+    ['a11ce123-id', { citations: [...citations('Ka11ce123-1', '乙库', 'a', '2026'), ...citations('Ka11ce123-2', '乙库', 'b', '2024')] }],
+  ]);
+  const result = mergeCitedDocuments(references, snapshots, new Map([[2, new Set(['Ka11ce123-1'])]]));
+  assert.equal(result.documents.length, 2);
+  const current = result.documents.find(item => item.documentVersion === '2026');
+  assert.deepEqual(current.citedTurns, [2]);
+  assert.deepEqual(current.libraries, ['甲库', '乙库']);
+  assert.deepEqual(result.documents.find(item => item.documentVersion === '2024').citedTurns, []);
+});
 
 test('会话引用按库和文档去重，区分检索结果和后续轮次打开的单个切片', () => {
   const view = { schema: 'tbea-view/v1', snapshotId: 'search' };

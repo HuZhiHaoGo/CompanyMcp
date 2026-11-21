@@ -3,7 +3,7 @@ import { BookOpen, ChevronDown, ChevronRight, Check, Copy, FileText, Image as Im
 import styles from './style.css';
 import { createSelectionClient, registerKnowledgeEntries, prefetchDefinition } from './composer.mjs';
 import { LibraryBrowser } from './library-browser.tsx';
-import { CitedDocumentsView } from './cited-documents-view.tsx';
+import { CitationLinks, CitedDocumentsView } from './cited-documents-view.tsx';
 import { displayPath } from './display-transport.mjs';
 
 export const inject = ['slots', 'commandUi', 'uiConversation', 'sessions'];
@@ -45,8 +45,8 @@ export function apply(ctx) {
     }, KnowledgeTool));
   }
   ctx.slots.inject('conversation.input.dock', () => ctx.slots.register({ name: 'conversation.input.dock', id: 'tbea-knowledge', order: -10,
-    inject: sessionId => ({ selection, selectionSessionId: sessionId }),
-  }, KnowledgeSelection));
+    inject: sessionId => ({ selection, selectionSessionId: sessionId, bridge, binding: ctx.sessions.binding(sessionId) }),
+  }, props => <><KnowledgeSelection {...props} /><CitationLinks bridge={props.bridge} binding={props.binding} /></>));
   ctx.slots.inject('conversation.chat.node', () => ctx.slots.register({ name: 'conversation.chat.node', key: 'tbea-knowledge-prefetch',
     inject: () => ({ bridge }),
   }, PrefetchedKnowledge));
@@ -83,6 +83,7 @@ export function KnowledgeSelection({ selection, selectionSessionId }) {
 export function PrefetchedKnowledge({ node, bridge }) {
   const view = node.data?.view;
   if (view?.schema !== 'tbea-view/v1') return <div className="tbea-error" role="alert">公司知识检索记录缺少来源信息，请查看运行轨迹。</div>;
+  if (view.clarification) return <div className="tbea-status" role="status">{view.clarification}</div>;
   return <div className="tbea-prefetched"><span className="tbea-prefetched-label">已先检索公司知识库</span><Sources view={view} bridge={bridge} /></div>;
 }
 
@@ -123,12 +124,13 @@ export function Sources({ view, bridge }) {
     <button className="tbea-source-toggle" type="button" aria-expanded={open} aria-controls={panelId} onClick={() => setOpen(!open)}>
       {open ? <ChevronDown size={16} /> : <ChevronRight size={16} />}<BookOpen size={16} /><strong>参考来源</strong><span className="tbea-count">{view.count ?? '—'}</span><span className="tbea-query" title={view.query}>{view.query}</span>{view.mode === 'mock' ? <span className="tbea-demo">演示</span> : null}
       {partial ? <span className="tbea-count" title="部分知识库未完成检索">已查 {coverage.completed}/{coverage.requested} 库</span> : null}
+      {!partial && coverage?.available > coverage.requested ? <span className="tbea-count" title="已从相关授权库获得证据">优先查 {coverage.requested}/{coverage.available} 库</span> : null}
       {view.evidenceStatus === 'partial' ? <span className="tbea-count" title="只找到部分所问事项的依据">部分有依据</span> : null}
     </button>
     {open ? <div className="tbea-source-body" id={panelId} aria-busy={loading}>
       {loading ? <div className="tbea-status" role="status"><LoaderCircle size={16} className="tbea-spin" />正在读取来源…</div> : null}
       {error ? <div className="tbea-error" role="alert">{error}<button type="button" className="tbea-icon" title="重新读取来源" onClick={() => setRevision(r => r + 1)}><RefreshCw size={15} /></button></div> : null}
-      {!loading && !error && snapshot?.citations.length === 0 ? <p className="tbea-empty">{snapshot.retrievalSkipped ? '本次问题无需查询公司知识库。' : partial ? '本次检索范围不完整，已检索的知识库中未找到相关依据，可重新发送问题。' : '未检索到相关依据，请补充产品、地区或标准版本等条件。'}</p> : null}
+      {!loading && !error && snapshot?.citations.length === 0 ? <p className="tbea-empty">{view.clarification || (snapshot.retrievalSkipped ? '本次问题无需查询公司知识库。' : partial ? '本次检索范围不完整，已检索的知识库中未找到相关依据，可重新发送问题。' : '未检索到相关依据，请补充产品、地区或标准版本等条件。')}</p> : null}
       {!loading && !error && snapshot?.citations.map(c => <div className="tbea-citation-group" key={c.citationId}>
         <Citation citation={c} snapshotId={view.snapshotId} bridge={bridge} onRefresh={setSnapshot} />
         {c.equivalentSources?.length ? <EquivalentSources sources={c.equivalentSources} snapshotId={view.snapshotId} bridge={bridge} onRefresh={setSnapshot} /> : null}
@@ -164,7 +166,7 @@ function Citation({ citation: c, snapshotId, bridge, onRefresh }) {
   }
   return <article className="tbea-citation" id={`tbea-${c.citationId}`}>
     <div className="tbea-citation-head"><FileText size={16} /><strong title={c.documentName}>{c.documentName}</strong><button className="tbea-icon" type="button" title={copied ? '已复制' : '复制切片内容'} aria-label={copied ? '已复制' : '复制切片内容'} onClick={copy}>{copied ? <Check size={16} /> : <Copy size={16} />}</button><span className="tbea-sr-only" role="status">{copied ? '切片内容已复制' : ''}</span></div>
-    <div className="tbea-meta"><span className="tbea-citation-id" title="回答对应的引用编号">{c.citationId}</span><span>{c.knowledgeBaseName}</span>{c.page ? <span>第 {c.page} 页</span> : null}{typeof c.score === 'number' ? <span title="检索相关分数，不代表答案正确率">相关分数 {c.score.toFixed(3)}</span> : null}</div>
+    <div className="tbea-meta"><span className="tbea-citation-id" title="回答对应的引用编号">{c.citationId}</span><span>{c.knowledgeBaseName}</span>{c.page ? <span>第 {c.page} 页</span> : null}{c.documentVersion ? <span>版本 {c.documentVersion}</span> : null}{c.effectiveDate ? <span>{c.effectiveDate} 生效</span> : null}{typeof c.score === 'number' ? <span title="检索相关分数，不代表答案正确率">相关分数 {c.score.toFixed(3)}</span> : null}</div>
     {c.content ? <p id={contentId} className={`tbea-content ${hasPreview && !expanded ? 'tbea-collapsed' : ''}`}>{c.content}</p> : null}
     {hasPreview ? <button className="tbea-text-button" type="button" aria-expanded={expanded} aria-controls={contentId} onClick={() => setExpanded(!expanded)}>{expanded ? '收起文字' : '展开文字'}</button> : null}
     {c.tables.map((table, index) => <Table key={index} table={table} index={index} />)}

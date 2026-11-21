@@ -73,6 +73,8 @@ async function readConfig(filename2) {
   }
   if (retrieval.libraryTimeoutMs > retrieval.roundTimeoutMs) throw new Error("\u5355\u5E93\u8D85\u65F6\u4E0D\u80FD\u5927\u4E8E\u6574\u8F6E\u68C0\u7D22\u8D85\u65F6");
   const evidenceThreshold = overrides.evidenceScoreThreshold;
+  if (overrides.diagnostics !== void 0 && typeof overrides.diagnostics !== "boolean") throw new Error("retrieval.diagnostics \u5FC5\u987B\u4E3A true \u6216 false");
+  if (overrides.semanticReview !== void 0 && typeof overrides.semanticReview !== "boolean") throw new Error("retrieval.semanticReview \u5FC5\u987B\u4E3A true \u6216 false");
   if (evidenceThreshold !== void 0 && (typeof evidenceThreshold !== "number" || !Number.isFinite(evidenceThreshold) || evidenceThreshold < 0 || evidenceThreshold > 1)) {
     throw new Error("retrieval.evidenceScoreThreshold \u5FC5\u987B\u4E3A 0\uFF5E1 \u7684\u6570\u5B57");
   }
@@ -85,13 +87,48 @@ async function readConfig(filename2) {
     knowledgeBases,
     dataDirectory,
     limits,
-    retrieval: { ...retrieval, evidenceScoreThreshold: evidenceThreshold },
+    retrieval: {
+      ...retrieval,
+      evidenceScoreThreshold: evidenceThreshold,
+      diagnostics: overrides.diagnostics,
+      synonyms: readSynonyms(overrides.synonyms),
+      semanticReview: overrides.semanticReview === false ? false : void 0,
+      semanticModelOrigins: readModelOrigins(overrides.semanticModelOrigins)
+    },
     documentPreview: await readDocumentPreview(config.documentPreview, path.dirname(absolute)),
     service: service && { ...service, autoStart },
     knowledgeDirectory: { mode: directoryMode, refreshSeconds },
     // 未配置的旧版本继续允许模型按需检索。
     autoRetrieveKnowledge: config.autoRetrieveKnowledge ?? true
   };
+}
+function readModelOrigins(value) {
+  if (value === void 0) return void 0;
+  if (!Array.isArray(value) || value.length > 10) throw new Error("retrieval.semanticModelOrigins \u5FC5\u987B\u4E3A\u81F3\u591A 10 \u9879\u7684 HTTPS \u5185\u7F51\u6765\u6E90\u6570\u7EC4");
+  return [...new Set(value.map((origin) => {
+    try {
+      if (typeof origin !== "string") throw new Error();
+      const url = new URL(origin);
+      if (url.protocol === "https:" && !url.username && !url.password && !url.search && !url.hash && url.pathname === "/") return url.origin;
+    } catch {
+    }
+    throw new Error("retrieval.semanticModelOrigins \u53EA\u63A5\u53D7 HTTPS \u6765\u6E90\uFF0C\u4F8B\u5982 https://model.example.internal");
+  }))];
+}
+function readSynonyms(value) {
+  if (value === void 0) return void 0;
+  if (!Array.isArray(value) || value.length > 50) throw new Error("retrieval.synonyms \u5FC5\u987B\u4E3A\u81F3\u591A 50 \u9879\u7684\u6570\u7EC4");
+  const valid = (text) => typeof text === "string" && text.trim().length >= 2 && text.trim().length <= 80;
+  function words(input) {
+    if (!Array.isArray(input) || !input.length || input.length > 12 || !input.every(valid)) {
+      throw new Error("retrieval.synonyms \u7684 aliases \u548C context \u5FC5\u987B\u5404\u5305\u542B 1\uFF5E12 \u4E2A\u975E\u7A7A\u77ED\u8BED");
+    }
+    return input.map((text) => text.trim());
+  }
+  return value.map((item) => {
+    if (!isRecord(item) || !valid(item.term)) throw new Error("retrieval.synonyms \u7684 term \u5FC5\u987B\u4E3A\u6B63\u5F0F\u4E1A\u52A1\u77ED\u8BED");
+    return { term: item.term.trim(), aliases: words(item.aliases), context: words(item.context) };
+  });
 }
 async function readDocumentPreview(value, directory) {
   if (value === void 0) return void 0;

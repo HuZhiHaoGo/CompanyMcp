@@ -1,6 +1,6 @@
 {
   "name": "dsh-plugin-tbea-knowledge",
-  "version": "0.11.3",
+  "version": "0.11.5",
   "description": "股份公司知识检索、引用、目录与原文预览，适配匠宝 Harness 0.2.2-rc.1",
   "type": "module",
   "main": "lib/index.js",

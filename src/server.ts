@@ -14,12 +14,14 @@ import { PlatformError } from './platform.ts';
 import { configIdentity,SERVICE_VERSION,RUNTIME_PROTOCOL } from './runtime.ts';
 import { hasCode, isRecord } from './contracts.ts';
 import type { Fetcher, ServiceConfig } from './contracts.ts';
+import type { SemanticModel } from './semantic.ts';
 
 interface ServerOptions {
   managed?: boolean;
   demoDirectory?: string;
   onPause?: () => void;
   fetcher?: Fetcher;
+  takeSemanticModel?: (requestId: string) => SemanticModel | undefined;
 }
 
 export function errorBody(error: unknown) {
@@ -95,7 +97,10 @@ export async function createKnowledgeServer(config: ServiceConfig, options: Serv
         mcp.setRequestHandler(CallToolRequestSchema, async (request, extra) => {
           try {
             const manuallySelected = request.params._meta?.['tbea/trigger'] === 'manual';
-            const result = await service.call(request.params.name, request.params.arguments || {}, AbortSignal.any([extra.signal,controller.signal,shutdown.signal]), manuallySelected);
+            const requestId = request.params._meta?.['tbea/semantic-request'];
+            const model = request.params.name === 'search_knowledge' && typeof requestId === 'string'
+              ? options.takeSemanticModel?.(requestId) : undefined;
+            const result = await service.call(request.params.name, request.params.arguments || {}, AbortSignal.any([extra.signal,controller.signal,shutdown.signal]), manuallySelected, model);
             return { content: [{ type: 'text', text: JSON.stringify(result.model) }], structuredContent: { schema: 'tbea-mcp-result/v1', ...result } };
           } catch (error) { return { isError: true, content: [{ type: 'text', text: JSON.stringify(errorBody(error)) }] }; }
         });

@@ -1,7 +1,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { isRecord } from './contracts.ts';
-import type { DocumentPreviewConfig, KnowledgeBase, PlatformConfig, ServiceConfig } from './contracts.ts';
+import type { DocumentPreviewConfig, EvidenceSynonym, KnowledgeBase, PlatformConfig, ServiceConfig } from './contracts.ts';
 
 export const PLATFORM_ORIGIN = 'https://ai.tbea.com';
 export const PLATFORM_SEARCH_PATH = '/openapi/v1/knowledgeBase?Action=QueryKnowledge';
@@ -61,19 +61,51 @@ export async function readConfig(filename: string): Promise<ServiceConfig> {
   }
   if (retrieval.libraryTimeoutMs > retrieval.roundTimeoutMs) throw new Error('单库超时不能大于整轮检索超时');
   const evidenceThreshold = overrides.evidenceScoreThreshold;
+  if (overrides.diagnostics !== undefined && typeof overrides.diagnostics !== 'boolean') throw new Error('retrieval.diagnostics 必须为 true 或 false');
+  if (overrides.semanticReview !== undefined && typeof overrides.semanticReview !== 'boolean') throw new Error('retrieval.semanticReview 必须为 true 或 false');
   if (evidenceThreshold !== undefined && (typeof evidenceThreshold !== 'number' || !Number.isFinite(evidenceThreshold) || evidenceThreshold < 0 || evidenceThreshold > 1)) {
     throw new Error('retrieval.evidenceScoreThreshold 必须为 0～1 的数字');
   }
 
   return {
     ...config, mode, port, serviceToken, platform, knowledgeBases, dataDirectory, limits,
-    retrieval: { ...retrieval, evidenceScoreThreshold: evidenceThreshold },
+    retrieval: { ...retrieval, evidenceScoreThreshold: evidenceThreshold, diagnostics: overrides.diagnostics, synonyms: readSynonyms(overrides.synonyms),
+      semanticReview: overrides.semanticReview === false ? false : undefined, semanticModelOrigins: readModelOrigins(overrides.semanticModelOrigins) },
     documentPreview: await readDocumentPreview(config.documentPreview, path.dirname(absolute)),
     service: service && { ...service, autoStart },
     knowledgeDirectory: { mode: directoryMode, refreshSeconds },
     // 未配置的旧版本继续允许模型按需检索。
     autoRetrieveKnowledge: config.autoRetrieveKnowledge ?? true,
   };
+}
+
+function readModelOrigins(value: unknown): string[] | undefined {
+  if (value === undefined) return undefined;
+  if (!Array.isArray(value) || value.length > 10) throw new Error('retrieval.semanticModelOrigins 必须为至多 10 项的 HTTPS 内网来源数组');
+  return [...new Set(value.map(origin => {
+    try {
+      if (typeof origin !== 'string') throw new Error();
+      const url = new URL(origin);
+      if (url.protocol === 'https:' && !url.username && !url.password && !url.search && !url.hash && url.pathname === '/') return url.origin;
+    } catch { /* Report the same configuration error for malformed URLs. */ }
+    throw new Error('retrieval.semanticModelOrigins 只接受 HTTPS 来源，例如 https://model.example.internal');
+  }))];
+}
+
+function readSynonyms(value: unknown): EvidenceSynonym[] | undefined {
+  if (value === undefined) return undefined;
+  if (!Array.isArray(value) || value.length > 50) throw new Error('retrieval.synonyms 必须为至多 50 项的数组');
+  const valid = (text: unknown): text is string => typeof text === 'string' && text.trim().length >= 2 && text.trim().length <= 80;
+  function words(input: unknown): string[] {
+    if (!Array.isArray(input) || !input.length || input.length > 12 || !input.every(valid)) {
+      throw new Error('retrieval.synonyms 的 aliases 和 context 必须各包含 1～12 个非空短语');
+    }
+    return input.map(text => text.trim());
+  }
+  return value.map(item => {
+    if (!isRecord(item) || !valid(item.term)) throw new Error('retrieval.synonyms 的 term 必须为正式业务短语');
+    return { term: item.term.trim(), aliases: words(item.aliases), context: words(item.context) };
+  });
 }
 
 async function readDocumentPreview(value: unknown, directory: string): Promise<DocumentPreviewConfig | undefined> {

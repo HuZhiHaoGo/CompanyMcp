@@ -7,6 +7,7 @@ import { readConfig } from '../../src/config.ts';
 import { SERVICE_VERSION } from '../../src/runtime.ts';
 import { SelectionStore, createPrefetch } from './selection.mjs';
 import { ServiceManager } from './service-manager.mjs';
+import { createSemanticModel } from './semantic-model.mjs';
 import { createCatalogHint } from './catalog-hint.mjs';
 import { displayPath } from './display-transport.mjs';
 
@@ -61,7 +62,7 @@ export async function apply(ctx, config = {}) {
   }
 
   // 自动工具调用与程序预检索复用相同的真实 MCP 通道、响应校验和取消信号。
-  async function callTool(name, args, requestSignal, manuallySelected = false) {
+  async function callTool(name, args, requestSignal, manuallySelected = false, agent, selection) {
     const signal = AbortSignal.any([requestSignal, lifetime.signal, AbortSignal.timeout(120000)]); signal.throwIfAborted();
     // 连接建立可被当前问题取消，但不关闭其他会话共享的 MCP 客户端。
     const transport = await new Promise((resolve, reject) => {
@@ -69,8 +70,16 @@ export async function apply(ctx, config = {}) {
       client().then(resolve, reject).finally(() => signal.removeEventListener('abort', aborted));
     }); let result;
     signal.throwIfAborted();
-    const params = { name, arguments: args, ...(manuallySelected && { _meta: { 'tbea/trigger': 'manual' } }) };
-    try { result = await requestScope.run(signal, () => transport.callTool(params, undefined, { signal, timeout: 120000 })); }
+    const semantic = name === 'search_knowledge' && agent && local.mode === 'live' && local.retrieval?.semanticReview !== false
+      ? createSemanticModel(ctx, agent, selection, local.retrieval?.semanticModelOrigins) : undefined;
+    try {
+      result = await service.withSemanticModel(semantic, semanticId => {
+        const meta = { ...(manuallySelected ? { 'tbea/trigger': 'manual' } : {}),
+          ...(semanticId ? { 'tbea/semantic-request': semanticId } : {}) };
+        const params = { name, arguments: args, ...(Object.keys(meta).length ? { _meta: meta } : {}) };
+        return requestScope.run(signal, () => transport.callTool(params, undefined, { signal, timeout: 120000 }));
+      });
+    }
     catch { if (signal.aborted) throw signal.reason; throw new Error('知识服务调用失败；未自动重发，请检查服务状态'); }
     if(result.isError) {
       let message=result.content?.find(x=>x.type==='text')?.text || '知识检索失败';
@@ -113,7 +122,7 @@ export async function apply(ctx, config = {}) {
           render: (_args, value) => [{ type: 'text', text: JSON.stringify(value.model) }],
           presentationMeta: (_args, value) => value.view,
         },
-        execute: (args, execution) => callTool(tool.name, args, execution.signal),
+        execute: (args, execution) => callTool(tool.name, args, execution.signal, false, execution.agent),
       });
     }
   }

@@ -22,7 +22,7 @@ function fixture(libraries, fetcher, retrieval) {
   const service = new KnowledgeService(config, { fetcher: (url, request) => {
     const action = url.searchParams.get('Action');
     const body = JSON.parse(request.body);
-    if (action === 'DescribeKnowledgeBases') return Response.json({ total: libraries.length, data: libraries.map(id => ({ id, name: id })) });
+    if (action === 'DescribeKnowledgeBases') return Response.json({ total: libraries.length, data: libraries.map(id => typeof id === 'string' ? { id, name: id } : id) });
     return fetcher(action, body, request.signal);
   } });
   service.searchGate = new SearchGate(2, 0);
@@ -32,6 +32,189 @@ function fixture(libraries, fetcher, retrieval) {
   };
   return { service, snapshots };
 }
+
+test('无别名的新制度库支持员工口语，引用正文可复核并排除访客办理', async () => {
+  const passage = '员工证件遗失补办：在行政服务平台提交补办申请，领取新证件。';
+  const { service, snapshots } = fixture(['employee-policy'], action => action === 'DescribeChunk'
+    ? Response.json({ id: 'badge', knowledgeBaseId: 'employee-policy', content: '访客出入登记流程。' }) : response(
+    chunk('employee-policy', 'visitor', '访客工牌丢了可向保安登记。访客证办理只适用于来访人员。', 0.96),
+    chunk('employee-policy', 'badge', passage, 0.73, { document_id: 'badge-policy' }),
+  ));
+  let calls = 0;
+  const result = await service.search({ query: '员工工牌丢了怎么补？' }, undefined, false, async input => {
+    calls++;
+    assert.equal(input.query, '员工工牌丢了怎么补？');
+    assert.equal(input.candidates.length, 2);
+    assert.doesNotMatch(JSON.stringify(input), /rank_score|knowledgebase_id|access_key/);
+    return JSON.stringify({ decisions: [
+      { id: input.candidates.find(c => c.text.includes('访客')).id, kind: 'unrelated' },
+      { id: input.candidates.find(c => c.text.includes('行政服务平台')).id, kind: 'direct', topics: [0], quote: passage },
+    ] });
+  });
+  assert.equal(calls, 1);
+  assert.equal(result.model.evidenceStatus, 'matched');
+  assert.deepEqual(result.model.citations.map(c => c.chunkId), ['badge']);
+  const stored = snapshots.get(result.view.snapshotId);
+  assert.ok(stored.citations[0].semanticEvidence.fingerprint);
+  const display = await service.snapshot(result.view.snapshotId);
+  assert.equal(display.citations[0].semanticEvidence, undefined);
+  assert.equal(display.citations[0].documentId, 'badge-policy');
+  const refreshed = await service.detail(result.view.snapshotId, result.model.citations[0].citationId);
+  assert.equal(refreshed.model.hitCount, 0, '旧语义复核与原正文绑定');
+});
+
+test('首次语义召回复核不足时保留原问题补检，新切片再复核才可引用', async () => {
+  const queries = [];
+  const passage = '员工证件遗失补办：登录行政服务平台，选择证件补办并提交申请。';
+  const { service } = fixture(['new-policy', 'outside'], (_action, body) => {
+    const [library] = body.knowledgebase_ids;
+    queries.push([library, body.query]);
+    return body.query.includes('证件遗失补办') ? response(
+      chunk(library, 'heading', '员工证件遗失补办。当前章节只有目录，具体流程待补充。', 0.93),
+      chunk(library, 'detail', passage, 0.8),
+    ) : response();
+  });
+  let calls = 0;
+  const query = '员工工牌丢了怎么补？';
+  const result = await service.search({ query, knowledge_base_ids: ['new-policy'] }, undefined, false, async input => {
+    if (++calls === 1) {
+      assert.deepEqual(input.candidates, []);
+      return JSON.stringify({ decisions: [], rewrite: '员工证件遗失补办' });
+    }
+    assert.equal(input.query, query);
+    return JSON.stringify({ decisions: [
+      { id: 1, kind: 'unrelated' },
+      { id: 2, kind: 'direct', topics: [0], quote: passage },
+    ] });
+  });
+  assert.equal(calls, 2);
+  assert.deepEqual(queries, [['new-policy', query], ['new-policy', query + ' 员工证件遗失补办']]);
+  assert.deepEqual(result.model.citations.map(c => c.chunkId), ['detail']);
+});
+
+test('语义复核拒绝捏造的引文，且不能越过已指定的国家范围', async () => {
+  const passage = '巴西地理气象条件：雨季集中在十月至翌年三月。';
+  const { service } = fixture(['manuals'], () => response(
+    chunk('manuals', 'br', passage, 0.92, { document_name: '巴西国别手册' }),
+  ));
+  const result = await service.search({ query: '乌拉圭的地理气象条件' }, undefined, false, async () =>
+    JSON.stringify({ decisions: [{ id: 1, kind: 'direct', topics: [0], quote: passage }] }));
+  assert.equal(result.model.hitCount, 0);
+  const invalid = await service.search({ query: '工牌丢了怎么补' }, undefined, false, async () =>
+    JSON.stringify({ decisions: [{ id: 1, kind: 'direct', topics: [0], quote: '员工可在行政平台补办工牌' }] }));
+  assert.equal(invalid.model.evidenceStatus, 'none');
+  assert.equal(invalid.model.hitCount, 0);
+});
+
+test('意图不清时以澄清提示收尾，不根据猜测发起补检', async () => {
+  let searches = 0;
+  const { service } = fixture(['policy'], () => { searches++; return response(); });
+  const result = await service.search({ query: '这张卡要怎么弄' }, undefined, false, async () =>
+    JSON.stringify({ decisions: [], needsClarification: true, rewrite: '员工证件补领' }));
+  assert.equal(searches, 1);
+  assert.equal(result.model.hitCount, 0);
+  assert.match(result.view.clarification, /补充.*场景/);
+});
+
+test('明确证据走原路径，语义超时或取消无法产生推测证据', async () => {
+  const { service, snapshots } = fixture(['plm'], () => response(
+    chunk('plm', 'direct', '未创建配置型材料件，请进入产品数据系统创建配置型材料件。', 0.83),
+  ));
+  let calls = 0;
+  const direct = await service.search({ query: '未创建配置型材料件，我该怎么办？' }, undefined, false, async () => { calls++; });
+  assert.equal(direct.model.hitCount, 1);
+  assert.equal(calls, 0);
+  service.config.retrieval = { libraryTimeoutMs: 35, roundTimeoutMs: 60 };
+  const timeout = await service.search({ query: '工牌丢了怎么补' }, undefined, false, async (_input, signal) => {
+    calls++;
+    await sleep(5000, undefined, { signal });
+  });
+  assert.equal(calls, 1);
+  assert.equal(timeout.model.hitCount, 0);
+  const count = snapshots.size;
+  const abort = new AbortController();
+  await assert.rejects(service.search({ query: '工牌丢了怎么补' }, abort.signal, false, async () => {
+    abort.abort();
+  }), /abort/i);
+  assert.equal(snapshots.size, count);
+});
+
+test('现场 PLM 误召回回归，高分电力 PDF 被排除，直接证据先于相近报错', async t => {
+  const info = t.mock.method(console, 'info', () => {});
+  const { service } = fixture(['mixed'], () => response(
+    chunk('mixed', 'accident', '配置足够的继电保护备品备件，对书面说明材料和结构配置文件进行确认。', 0.99, { document_name: '防止电力生产事故要求.pdf' }),
+    chunk('mixed', 'unreleased', '配置型材料件处于正在工作，未发布，请提交材料件审签升级请求。', 0.93),
+    chunk('mixed', 'missing', '未查找到配置型原材料，由 PLM 管理员处理。', 0.92),
+    chunk('mixed', 'create', '未创建配置型材料件。操作为创建配置型材料件，填写参数后发布。', 0.68, { document_name: '019_未创建配置型材料件.docx' }),
+  ), { perLibraryTop: 4, diagnostics: true });
+  const primary = await service.search({ query: '未创建配置型材料件，我该怎么办？' });
+  assert.deepEqual(primary.model.citations.map(item => item.chunkId), ['create', 'unreleased', 'missing']);
+  const trace = JSON.parse(info.mock.calls[0].arguments[0]);
+  assert.equal(trace.candidates.find(item => item.chunkId === 'accident').reason, 'no-topic');
+  assert.equal(trace.candidates.find(item => item.chunkId === 'accident').score, 0.99);
+  assert.doesNotMatch(JSON.stringify(trace), /继电保护备品|书面说明材料|填写参数|凭证/);
+  assert.equal((await service.snapshot(primary.view.snapshotId)).citations.length, 3);
+  const electrical = await service.search({ query: '继电保护装置的备品备件要求' });
+  assert.equal(electrical.model.citations[0]?.chunkId, 'accident');
+});
+
+test('新授权制度库按主题优先查询，口语不足时补检，发票入账与差旅报账分开', async () => {
+  const libraries = [{ id: 'finance', name: '财务入账' }, 'standards'];
+  const requests = [];
+  const { service } = fixture(libraries, (_action, body) => {
+    const [id] = body.knowledgebase_ids;
+    requests.push([id, body.query]);
+    if (id === 'finance') return response(chunk(id, 'invoice', '供应商发票提交应付账款入账，会计凭证登记。', 0.94));
+    if (id !== 'rules') return response();
+    return response(
+      ...(body.query.includes('差旅费报销流程') ? [chunk(id, 'reimburse', '差旅费报销流程：提交费用发票并审批。', 0.8)] : []),
+      chunk(id, 'hotel-policy', '出差住宿按城市执行住宿费报销上限，甲类城市 500 元。', 0.78),
+      chunk(id, 'purchase', '办公用品采购报销流程：凭发票办理。', 0.95),
+    );
+  });
+  await service.search({ query: '出差回来怎么报账？' });
+  libraries.push({ id: 'rules', name: '公司规章制度', description: '差旅及员工费用报销' });
+  service.directory.expiresAt = 0;
+  requests.length = 0;
+  const formal = await service.search({ query: '差旅费报销流程是什么？' });
+  assert.deepEqual(formal.model.citations.map(item => item.chunkId), ['reimburse']);
+  assert.deepEqual(formal.view.coverage, { completed: 1, requested: 1, available: 3 });
+  assert.equal(requests.length, 1);
+  requests.length = 0;
+  const colloquial = await service.search({ query: '出差回来怎么报账？' });
+  assert.deepEqual(colloquial.model.citations.map(item => item.chunkId), ['reimburse']);
+  assert.ok(requests.some(([id, q]) => id === 'rules' && q === '出差回来怎么报账？ 差旅费报销流程'));
+  const lodging = await service.search({ query: '住酒店最多能报多少？' });
+  assert.deepEqual(lodging.model.citations.map(item => item.chunkId), ['hotel-policy']);
+  const invoice = await service.search({ query: '供应商发票怎么入账？' });
+  assert.deepEqual(invoice.model.citations.map(item => item.chunkId), ['invoice']);
+  assert.match((await service.search({ query: '怎么报账？' })).model.notice, /请先确认/);
+});
+
+test('两国各自计覆盖，相邻国家的顺带提及不足以支持结论', async () => {
+  const { service } = fixture(['countries'], () => response(
+    chunk('countries', 'uy', '乌拉圭地理气象条件：年降雨量 950 毫米。', 0.8),
+    chunk('countries', 'br', '巴西地理简述：西部毗邻乌拉圭，这里讲的是巴西的国情。', 0.9),
+  ));
+  const compared = await service.search({ query: '乌拉圭和巴西的地理气象条件' });
+  assert.equal(compared.model.evidenceStatus, 'partial');
+  assert.match(compared.model.missingTopics.join(), /巴西/);
+  assert.deepEqual(compared.model.citations.map(item => item.chunkId), ['uy']);
+  assert.equal((await service.search({ query: '乌拉圭的国情简述' })).model.hitCount, 0);
+});
+
+test('自定义同义短语可用于新增制度，显式版本排除旧制度', async () => {
+  const { service } = fixture(['rules'], () => response(
+    chunk('rules', 'old', '合同盖章申请需要提交审批。', 0.96,
+      { original_document_id: 'seals-policy', document_version: '2024', effective_date: '2024-01-01' }),
+    chunk('rules', 'current', '合同印章使用申请需要提交审批。', 0.8,
+      { original_document_id: 'seals-policy', document_version: '2026', effective_date: '2026-01-01' }),
+  ), { synonyms: [{ term: '印章使用', aliases: ['盖章'], context: ['合同'] }] });
+  const { model, view } = await service.search({ query: '合同怎么盖章？2026版' });
+  assert.deepEqual(model.citations.map(item => item.chunkId), ['current']);
+  assert.equal(model.citations[0].effectiveDate, '2026-01-01');
+  assert.match((await service.snapshot(view.snapshotId)).citations[0].documentGroupId, /^[0-9a-f]{64}$/);
+});
 
 test('七库独立召回，库目录顺序改变后原文仍排第一，新授权库在刷新后加入', async () => {
   const ids = ['travel', 'rules', 'plm', 'design', 'scans', 'book-custom', 'book-normal'];

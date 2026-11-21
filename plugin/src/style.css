@@ -237,6 +237,9 @@ body[data-ds-dark-theme] :where(.tbea-sources,.tbea-selection,.tbea-prefetched,.
 .tbea-cited-turns li button { width:100%; }
 .tbea-cited-preview { display:flex;flex-direction:column;block-size:min(68dvh, 900px);min-height:0;border:1px solid var(--tbea-lib-border);border-radius:8px;overflow:hidden; }
 .tbea-cited-preview .tbea-library-reader { flex:1; }
+.tbea-cited-status { display:inline-block;margin-inline-start:7px;padding:1px 5px;border-radius:5px;background:var(--tbea-lib-active);color:var(--tbea-lib-fg); }
+.tbea-citation-dialog { border:0;padding:0;border-radius:10px;width:min(900px,calc(100vw - 28px));height:min(760px,82dvh);overflow:hidden; }
+.tbea-citation-dialog::backdrop { background:rgba(0,0,0,.45); }
 @container (max-width: 590px) {
   .tbea-library-layout { grid-template-columns:minmax(0,1fr); }
   .tbea-library-list { border-right:0; }

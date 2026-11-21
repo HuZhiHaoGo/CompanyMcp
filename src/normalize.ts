@@ -6,8 +6,10 @@ import { fromMarkdown } from 'mdast-util-from-markdown';
 import { gfm } from 'micromark-extension-gfm';
 import { gfmFromMarkdown } from 'mdast-util-gfm';
 import { isRecord } from './contracts.ts';
-import type { Citation, CitationImage, JsonRecord, KnowledgeBase, PublicCitation, PublicSnapshot, Snapshot, TableCell } from './contracts.ts';
+import type { Citation, CitationImage, EvidenceSynonym, JsonRecord, KnowledgeBase, PublicCitation, PublicSnapshot, Snapshot, TableCell } from './contracts.ts';
 import { checkEvidence, evidenceScore } from './evidence.ts';
+import type { EvidenceDecision } from './evidence.ts';
+import { verifiedSemanticDecision } from './semantic.ts';
 
 type HtmlNode = DefaultTreeAdapterTypes.Node;
 type Table = Citation['tables'][number];
@@ -105,17 +107,26 @@ export function normalizeCitation(raw: JsonRecord, index: number, snapshotId: st
   const pageNumbers = isRecord(raw.locations) ? raw.locations.page_num : undefined;
   const firstPage: unknown = Array.isArray(pageNumbers) || typeof pageNumbers === 'string' ? pageNumbers[0] : isRecord(pageNumbers) ? pageNumbers[0] : undefined;
   const page = firstPage ?? raw.page_num ?? raw.page ?? meta.page;
+  const documentVersion = str(raw.document_version, raw.documentVersion, raw.version, meta.version, raw.revision, meta.revision) || undefined;
+  const date = str(raw.effective_date, raw.effectiveDate, meta.effectiveDate, meta.effective_date);
+  const effectiveDate = /^\d{4}-\d{2}-\d{2}(?:$|T)/.test(date) ? date.slice(0, 10) : undefined;
+  // Only an explicit canonical source and edition establish identity across libraries.
+  const originalId = str(raw.original_document_id, raw.originalDocumentId, meta.original_document_id, meta.originalDocumentId);
+  const documentGroupId = originalId && documentVersion
+    ? createHash('sha256').update(JSON.stringify([originalId, documentVersion, effectiveDate])).digest('hex')
+    : undefined;
   const citationId = `K${snapshotId.slice(0, 8)}-${index + 1}`;
   const tableText = tables.map(t => t.rows.map(row => row.map(c => c.text).join(' | ')).join('\n')).join('\n\n');
   return { citationId, chunkId: str(raw.chunk_id, raw.chunkId, raw.id), knowledgeBaseId: kb, knowledgeBaseName: catalog.find(k => k.id === kb)?.name || kb,
     documentId: str(raw.document_id, raw.documentId), documentName: str(raw.document_name, raw.title, meta.title) || '知识库切片',
+    documentGroupId, documentVersion, effectiveDate,
     page: Number.isFinite(Number(page)) && Number(page) > 0 ? Number(page) : undefined,
     score: raw.rank_score ?? raw.rerank_score ?? raw.score, content: content.trim(), tables, images: uniqueImages,
     modelText: [content.trim(), tableText].filter(Boolean).join('\n\n'), source: raw };
 }
 
 export function publicSnapshot(snapshot: Snapshot, allowed?: ReadonlySet<string>): PublicSnapshot {
-  const publicCitation = ({ source, modelText, equivalentSources, ...c }: Citation): PublicCitation => ({ ...c, images: c.images.map(({ url, ...image }) => image) });
+  const publicCitation = ({ source, modelText, semanticEvidence, equivalentSources, ...c }: Citation): PublicCitation => ({ ...c, images: c.images.map(({ url, ...image }) => image) });
   return { ...snapshot, citations: snapshot.citations.map(citation => ({
     ...publicCitation(citation),
     equivalentSources: (citation.equivalentSources || []).filter(c => !allowed || allowed.has(c.knowledgeBaseId)).map(publicCitation),
@@ -123,25 +134,40 @@ export function publicSnapshot(snapshot: Snapshot, allowed?: ReadonlySet<string>
 }
 
 /** 所有引用正文均为待核对的资料，而不是可执行指令；图片 URL 和字节不进入模型上下文。 */
-export function modelResult(snapshot: Snapshot, maxCharacters: number, citations: readonly Citation[] = snapshot.citations, threshold = 0) {
+export function modelResult(snapshot: Snapshot, maxCharacters: number, citations: readonly Citation[] = snapshot.citations, threshold = 0, synonyms?: readonly EvidenceSynonym[]) {
   let remaining = maxCharacters;
-  const evidence = snapshot.mode === 'live' && !snapshot.retrievalSkipped ? checkEvidence(snapshot.query) : undefined;
+  const evidence = snapshot.mode === 'live' && !snapshot.retrievalSkipped ? checkEvidence(snapshot.query, synonyms) : undefined;
+  const clarification = evidence?.clarification || (snapshot.semanticClarification ? '请补充要办理的具体事项、对象或适用场景。' : undefined);
+  const decisions: EvidenceDecision[] = [];
   const projected = citations.flatMap(c => {
     const text = c.modelText.slice(0, remaining);
     // 旧快照和刷新后的详情也校验。被截断的正文只能依据实际发给模型的部分判断。
-    if (evidence && (evidenceScore(c.source.rank_score) < threshold || !evidence.matches({ text, documentName: c.documentName }).length)) return [];
+    if (evidence) {
+      if (clarification || evidenceScore(c.source.rank_score) < threshold) return [];
+      const input = { ...c, text };
+      const proof = verifiedSemanticDecision({ ...input, text: c.modelText }, c.semanticEvidence, text);
+      const scoped = proof ? evidence.semanticTopics(input) : [];
+      const topics = proof?.topics.filter(topic => scoped.includes(topic)) ?? [];
+      const decision = proof && topics.length ? { ...proof, topics, directTopics: topics } : evidence.evaluate(input);
+      if (!decision.topics.length) return [];
+      decisions.push(decision);
+    }
     remaining -= text.length;
-    return [{ citationId: c.citationId, knowledgeBase: c.knowledgeBaseName, documentName: c.documentName, chunkId: c.chunkId, page: c.page, text, truncated: text.length < c.modelText.length }];
+    return [{ citationId: c.citationId, knowledgeBase: c.knowledgeBaseName, documentName: c.documentName, chunkId: c.chunkId, page: c.page,
+      documentVersion: c.documentVersion, effectiveDate: c.effectiveDate, text, truncated: text.length < c.modelText.length }];
   });
-  const assessment = snapshot.retrievalSkipped ? { status: 'not_needed' as const, missingTopics: [] } : evidence?.summarize(projected);
+  const assessment = snapshot.retrievalSkipped ? { status: 'not_needed' as const, missingTopics: [] } : evidence?.summarizeDecisions(decisions);
   const coverage = snapshot.coverage;
   const coverageNotice = coverage && coverage.completed < coverage.requested
     ? `本次仅完成 ${coverage.completed}/${coverage.requested} 个知识库的检索。回答时说明检索范围不完整，缺少依据时不得推断公司规定。`
     : '';
-  let notice = snapshot.mode === 'mock' ? '演示资料，不可作为实际设计依据。' : '切片是待核对的资料。只有正文或表格直接支持结论时才引用 [citationId]。核对对象、条件、版本和所问事项，不根据图片推断。';
-  if (assessment?.status === 'none') notice += '本次未找到能支持问题的公司资料。明确说明依据不足，不把通用知识当作公司规定。';
+  let notice = snapshot.mode === 'mock' ? '演示资料，不可作为实际设计依据。' : '切片是待核对的公司知识库资料。用 [文档名](citationId) 标注能直接支持结论的切片，使用本轮真实编号。围绕所问章节作答，核对对象、适用条件和版本，不根据图片推断。公司知识库资料标为公司知识库来源，时效性结论紧邻标注可核实的资料日期。版本冲突时分别说明依据和适用条件。';
+  if (coverage?.available && coverage.available > coverage.requested) notice += '本轮优先检索了与问题相关的授权知识库。';
+  if (clarification) notice += clarification;
+  else if (assessment?.status === 'none') notice += '本次未找到能支持问题的公司资料。明确说明依据不足，不把通用知识当作公司规定。';
   if (assessment?.status === 'partial') notice += '部分事项缺少公司资料。仅回答有直接依据的部分，并明确列出缺少依据的事项。';
   if (assessment?.status === 'not_needed') notice = '此问题是独立算术题，无需公司知识库，请直接计算回答。';
   return { schema: 'tbea-knowledge/v1' as const, snapshotId: snapshot.id, query: snapshot.query, hitCount: projected.length, totalCount: snapshot.totalCount, mode: snapshot.mode,
-    coverage, ...(assessment && { evidenceStatus: assessment.status, missingTopics: assessment.missingTopics }), notice: notice + coverageNotice, citations: projected };
+    coverage, ...(assessment && { evidenceStatus: assessment.status, missingTopics: assessment.missingTopics }),
+    ...(clarification ? { clarification } : {}), notice: notice + coverageNotice, citations: projected };
 }

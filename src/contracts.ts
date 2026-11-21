@@ -38,6 +38,16 @@ export interface RetrievalConfig {
   libraryTimeoutMs: number;
   roundTimeoutMs: number;
   evidenceScoreThreshold?: number;
+  diagnostics?: boolean;
+  synonyms?: EvidenceSynonym[];
+  semanticReview?: boolean;
+  semanticModelOrigins?: string[];
+}
+
+export interface EvidenceSynonym {
+  term: string;
+  aliases: string[];
+  context: string[];
 }
 
 export interface Limits {
@@ -76,6 +86,7 @@ export interface DocumentPreviewConfig {
 export interface Coverage {
   completed: number;
   requested: number;
+  available?: number;
 }
 
 export interface TableCell {
@@ -98,6 +109,9 @@ export interface Citation {
   knowledgeBaseName: string;
   documentId: string;
   documentName: string;
+  documentGroupId?: string;
+  documentVersion?: string;
+  effectiveDate?: string;
   page?: number;
   // 平台分数允许缺失或格式异常，排序和界面使用前分别进行判断。
   score?: unknown;
@@ -106,7 +120,14 @@ export interface Citation {
   images: CitationImage[];
   modelText: string;
   source: JsonRecord;
+  semanticEvidence?: SemanticProof;
   equivalentSources?: Citation[];
+}
+
+export interface SemanticProof {
+  fingerprint: string;
+  topics: number[];
+  quote: string;
 }
 
 export interface Snapshot {
@@ -118,10 +139,11 @@ export interface Snapshot {
   totalCount: number | string;
   coverage?: Coverage;
   retrievalSkipped?: boolean;
+  semanticClarification?: boolean;
   citations: Citation[];
 }
 
-export type PublicCitation = Omit<Citation, 'source' | 'modelText' | 'images' | 'equivalentSources'> & {
+export type PublicCitation = Omit<Citation, 'source' | 'modelText' | 'images' | 'semanticEvidence' | 'equivalentSources'> & {
   images: Omit<CitationImage, 'url'>[];
 };
 

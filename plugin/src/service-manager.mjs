@@ -1,5 +1,6 @@
 import { createKnowledgeServer } from '../../src/server.ts';
 import { fileURLToPath } from 'node:url';
+import { randomUUID } from 'node:crypto';
 import { configIdentity,SERVICE_VERSION,RUNTIME_PROTOCOL } from '../../src/runtime.ts';
 
 // 热重载及同进程多窗口共用监听实例，最后一个使用者释放后才关闭。
@@ -48,7 +49,13 @@ export class ServiceManager {
     if(await this.probe()) return;
     if(this.config.service?.autoStart===false) throw new Error('自动启动已关闭，请先运行 Start-Service.ps1');
     let app;
-    try { app=await createKnowledgeServer(this.config,{ managed:true,demoDirectory:this.demoDirectory, onPause: () => { entry.paused = true; } }); }
+    try { app=await createKnowledgeServer(this.config,{ managed:true,demoDirectory:this.demoDirectory, onPause: () => { entry.paused = true; },
+      takeSemanticModel: id => {
+        const model = entry.semanticModels.get(id);
+        entry.semanticModels.delete(id);
+        return model;
+      },
+    }); }
     catch { throw new Error('无法初始化知识缓存，请检查 dataDirectory 是否为可写目录'); }
     if(!entry.owners.size) { await app.close(); return; }
     try { await app.listen(); entry.app=app; }
@@ -62,13 +69,21 @@ export class ServiceManager {
       throw new Error('公司知识服务启动失败，请检查端口权限和 data 目录写入权限');
     }
   }
+  async withSemanticModel(model, call) {
+    const entry = this.entry;
+    if (!model || this.closed || !entry?.app || entry.paused) return call();
+    const id = randomUUID();
+    entry.semanticModels.set(id, model);
+    try { return await call(id); }
+    finally { entry.semanticModels.delete(id); }
+  }
   async ensure() {
     if(this.closed) throw new Error('公司知识插件正在退出');
     try {
       let entry=registry.get(this.config.port);
       if(entry?.closing) { await entry.closing; return this.ensure(); }
       if(entry && entry.identity!==this.identity) throw new Error('同一端口不能同时启动不同配置的知识服务');
-      if(!entry) { entry={ identity:this.identity,owners:new Set(),app:null }; registry.set(this.config.port,entry); }
+      if(!entry) { entry={ identity:this.identity,owners:new Set(),app:null,semanticModels:new Map() }; registry.set(this.config.port,entry); }
       entry.owners.add(this.token); this.entry=entry;
       if (entry.paused) throw new Error(this.snapshot().serviceMessage);
       if(!entry.app?.server.listening) {
@@ -82,6 +97,7 @@ export class ServiceManager {
       if (entry.paused) throw new Error(this.snapshot().serviceMessage);
       this.state={ servicePhase:'ready',serviceMessage:'公司知识服务已就绪' };
     } catch(error) {
+      if (this.closed) throw new Error('公司知识插件正在退出');
       this.state={ servicePhase:'error',serviceMessage:error.message || '公司知识服务启动失败' }; throw error;
     }
   }
