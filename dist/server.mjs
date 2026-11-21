@@ -34064,16 +34064,21 @@ var PLATFORM_LIST_PATH = "/api/ai_apaas/v1/knowledgeBase?Action=DescribeKnowledg
 var PLATFORM_CHUNK_PATH = "/api/ai_apaas/v1/knowledgeBase?Action=DescribeChunk";
 var LEGACY_SEARCH_PATH = "/api/ai_apaas/v1/knowledgebases/query";
 var RETRIEVAL_DEFAULTS = Object.freeze({ perLibraryTop: 3, libraryTimeoutMs: 8e3, roundTimeoutMs: 3e4 });
-async function readConfig(filename) {
-  const absolute = path.resolve(filename);
+function parseConfigJson(contents) {
   let config2;
-  const contents = (await fs.readFile(absolute, "utf8")).replace(/^\uFEFF/, "");
   try {
-    config2 = JSON.parse(contents);
+    config2 = JSON.parse(contents.replace(/^\uFEFF/, ""));
   } catch {
     throw new Error("\u914D\u7F6E\u6587\u4EF6\u4E0D\u662F\u6709\u6548 JSON\uFF0C\u8BF7\u68C0\u67E5\u82F1\u6587\u5F15\u53F7\u3001\u9017\u53F7\u548C\u62EC\u53F7");
   }
   if (!isRecord(config2)) throw new Error("\u914D\u7F6E\u6587\u4EF6\u7684\u6700\u5916\u5C42\u5FC5\u987B\u4E3A JSON \u5BF9\u8C61");
+  return config2;
+}
+async function readConfig(filename, options) {
+  return validateConfig(parseConfigJson(await fs.readFile(filename, "utf8")), filename, options);
+}
+async function validateConfig(config2, filename, options = {}) {
+  const directoryPath = path.dirname(path.resolve(filename));
   const service = config2.service;
   if (service !== void 0 && !isRecord(service)) throw new Error("service \u5FC5\u987B\u4E3A\u5BF9\u8C61");
   const autoStart = service?.autoStart;
@@ -34103,7 +34108,7 @@ async function readConfig(filename) {
   if ((mode === "mock" || directoryMode === "static") && !knowledgeBases.length) throw new Error("\u6F14\u793A\u6216\u9759\u6001\u6A21\u5F0F\u9700\u8981\u914D\u7F6E\u81F3\u5C11\u4E00\u4E2A\u77E5\u8BC6\u5E93");
   if (mode === "live" && directoryMode === "static" && knowledgeBases.some((k) => k.id.startsWith("demo-"))) throw new Error("\u6B63\u5F0F\u9759\u6001\u6A21\u5F0F\u4E0D\u80FD\u4F7F\u7528\u6F14\u793A\u77E5\u8BC6\u5E93 ID");
   if (config2.dataDirectory && typeof config2.dataDirectory !== "string") throw new Error("dataDirectory \u5FC5\u987B\u4E3A\u76EE\u5F55\u8DEF\u5F84");
-  const dataDirectory = path.resolve(path.dirname(absolute), typeof config2.dataDirectory === "string" && config2.dataDirectory ? config2.dataDirectory : "../data");
+  const dataDirectory = path.resolve(directoryPath, typeof config2.dataDirectory === "string" && config2.dataDirectory ? config2.dataDirectory : options.defaultDataDirectory ?? "../data");
   const limits = { top: 10, maxEvidenceChunks: 5, maxQueryCharacters: 1024, maxTextCharacters: 3e4, maxImageBytes: 15 * 1024 * 1024, maxCacheBytes: 512 * 1024 * 1024, maxSnapshots: 500, ...isRecord(config2.limits) ? config2.limits : {} };
   for (const [key, value] of Object.entries(limits)) if (!Number.isSafeInteger(value) || value < 1) throw new Error(`limits.${key} \u5FC5\u987B\u4E3A\u6B63\u6574\u6570`);
   if (limits.top > 20 || limits.maxEvidenceChunks > 20 || limits.maxSnapshots > 1e4 || limits.maxQueryCharacters > 1024) throw new Error("\u68C0\u7D22\u6570\u91CF\u3001\u5FEB\u7167\u6570\u91CF\u6216 query \u957F\u5EA6\u8D85\u8FC7\u9650\u5236");
@@ -34138,7 +34143,7 @@ async function readConfig(filename) {
       semanticReview: overrides.semanticReview === false ? false : void 0,
       semanticModelOrigins: readModelOrigins(overrides.semanticModelOrigins)
     },
-    documentPreview: await readDocumentPreview(config2.documentPreview, path.dirname(absolute)),
+    documentPreview: await readDocumentPreview(config2.documentPreview, directoryPath, options.bundledPopplerBin),
     service: service && { ...service, autoStart },
     knowledgeDirectory: { mode: directoryMode, refreshSeconds },
     // 未配置的旧版本继续允许模型按需检索。
@@ -34173,7 +34178,7 @@ function readSynonyms(value) {
     return { term: item.term.trim(), aliases: words2(item.aliases), context: words2(item.context) };
   });
 }
-async function readDocumentPreview(value, directory) {
+async function readDocumentPreview(value, directory, bundledPopplerBin) {
   if (value === void 0) return void 0;
   if (!isRecord(value) || typeof value.enabled !== "boolean") throw new Error("documentPreview.enabled \u5FC5\u987B\u4E3A true \u6216 false");
   function program(input, key) {
@@ -34190,14 +34195,19 @@ async function readDocumentPreview(value, directory) {
   }
   let info = program(pdfInfo, "pdfInfo");
   let ppm = program(pdfToPpm, "pdfToPpm");
-  if (value.enabled && process.platform === "win32" && (!info || !ppm)) {
-    const bin = path.resolve(directory, "../tools/poppler/Library/bin");
-    async function bundledProgram(name2) {
-      const filename = path.join(bin, name2);
-      const file = await fs.stat(filename).catch(() => void 0);
-      return file?.isFile() ? filename : void 0;
+  if (value.enabled && process.platform === "win32") {
+    const legacyBin = path.resolve(directory, "../tools/poppler/Library/bin");
+    const offlineBin = path.resolve(directory, "../plugin/tools/poppler/Library/bin");
+    async function bundledProgram(name2, configured, original) {
+      const legacyDefault = !bundledPopplerBin && typeof original === "string" && !path.isAbsolute(original) && configured === path.join(legacyBin, name2);
+      if (configured && !legacyDefault) return configured;
+      for (const bin of bundledPopplerBin ? [bundledPopplerBin] : [legacyBin, offlineBin]) {
+        const filename = path.join(bin, name2);
+        if ((await fs.stat(filename).catch(() => void 0))?.isFile()) return filename;
+      }
+      return configured;
     }
-    [info, ppm] = await Promise.all([info ?? bundledProgram("pdfinfo.exe"), ppm ?? bundledProgram("pdftoppm.exe")]);
+    [info, ppm] = await Promise.all([bundledProgram("pdfinfo.exe", info, pdfInfo), bundledProgram("pdftoppm.exe", ppm, pdfToPpm)]);
   }
   if (value.enabled && (!info || !ppm)) throw new Error("\u542F\u7528\u6B63\u5F0F\u539F\u6587\u9884\u89C8\u9700\u8981\u914D\u7F6E pdfInfo \u548C pdfToPpm");
   return { enabled: value.enabled, pdfInfo: info, pdfToPpm: ppm, office: program(office, "office"), converters };
@@ -67399,7 +67409,7 @@ var LibraryBrowser = class {
 
 // src/runtime.ts
 import { createHmac } from "node:crypto";
-var SERVICE_VERSION = "0.11.5";
+var SERVICE_VERSION = "0.11.6";
 var RUNTIME_PROTOCOL = "tbea-runtime/v1";
 function canonical(value) {
   if (Array.isArray(value)) return value.map(canonical);

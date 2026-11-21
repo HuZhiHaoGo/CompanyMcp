@@ -1,9 +1,11 @@
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import { TOOLS, toolDescription } from '../../src/knowledge.ts';
 import { readConfig } from '../../src/config.ts';
+import { desktopConfigLocations } from '../../src/desktop-config.ts';
 import { SERVICE_VERSION } from '../../src/runtime.ts';
 import { SelectionStore, createPrefetch } from './selection.mjs';
 import { ServiceManager } from './service-manager.mjs';
@@ -16,16 +18,24 @@ export const inject = ['tools', 'connection', 'agents'];
 
 /** 只桥接本服务的两个只读工具；使用官方 MCP 客户端协议，不依赖通用桥接插件。 */
 export async function apply(ctx, config = {}) {
-  if (!config.configFile || !path.isAbsolute(config.configFile)) throw new Error('请在插件配置中设置 configFile 的绝对路径');
-  const local = await readConfig(config.configFile);
+  const explicitConfig = config.configFile !== undefined;
+  if (explicitConfig && (typeof config.configFile !== 'string' || !path.isAbsolute(config.configFile))) {
+    throw new Error('请在插件配置中设置 configFile 的绝对路径');
+  }
+  const packageRoot = fileURLToPath(new URL('..', import.meta.url));
+  const projectRoot = config.projectRoot || (explicitConfig ? path.resolve(path.dirname(config.configFile), '..') : packageRoot);
+  if (typeof projectRoot !== 'string' || !path.isAbsolute(projectRoot)) throw new Error('projectRoot 必须为项目的绝对路径');
+  const locations = explicitConfig ? { filename: config.configFile } : desktopConfigLocations(process.env.DSH_HOME, projectRoot);
+  const local = await readConfig(locations.filename, locations.options).catch(error => {
+    if (error.code === 'ENOENT') throw new Error(`知识库配置文件不存在，请先运行管理员初始化脚本：${locations.filename}`, { cause: error });
+    throw error;
+  });
   const { autoRetrieveKnowledge } = local;
-  const projectRoot=config.projectRoot || path.resolve(path.dirname(config.configFile),'..');
-  if(!path.isAbsolute(projectRoot)) throw new Error('projectRoot 必须为项目的绝对路径');
   if (typeof local.serviceToken !== 'string' || local.serviceToken.length < 32 || !Number.isInteger(local.port)) throw new Error('知识服务配置未初始化');
   const base = `http://127.0.0.1:${local.port}`;
   const authorization = `Bearer ${local.serviceToken}`;
   const lifetime = new AbortController(); let connection; let connecting;
-  // 安装后插件可能被复制到 DSH profile，资源位置必须来自项目配置，不能猜测 node_modules 路径。
+  // 新安装的资源来自实际插件包，旧安装仍可通过 projectRoot 指向外层资源。
   const service=new ServiceManager(local,{ demoDirectory:path.join(projectRoot,'dist/demo') });
   const clients = new Set();
   const requestScope = new AsyncLocalStorage();

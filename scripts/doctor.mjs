@@ -1,12 +1,17 @@
 import path from 'node:path';
+import fs from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
+import { parseArgs } from 'node:util';
 import { readConfig } from '../src/config.ts';
+import { commandHarnessHome, desktopConfigLocations } from '../src/desktop-config.ts';
 import { configIdentity,SERVICE_VERSION,RUNTIME_PROTOCOL } from '../src/runtime.ts';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 
-export async function diagnose(filename) {
-  const config = await readConfig(filename); const base = `http://127.0.0.1:${config.port}`;
+export async function diagnose(filename, options) {
+  console.log(`Configuration: ${path.resolve(filename)}`);
+  const config = await readConfig(filename, options); const base = `http://127.0.0.1:${config.port}`;
+  if (config.documentPreview?.enabled) console.log(`Poppler: ${config.documentPreview.pdfInfo}; ${config.documentPreview.pdfToPpm}`);
   console.log(`Node: ${process.version}; mode: ${config.mode}; service: ${base}`);
   console.log(`DSH knowledge retrieval: ${config.autoRetrieveKnowledge ? 'on-demand' : 'manual-only'}`);
   const health = await fetch(`${base}/health`, { signal: AbortSignal.timeout(5000) });
@@ -32,6 +37,30 @@ export async function diagnose(filename) {
   } finally { await client.close(); }
 }
 if (path.resolve(process.argv[1] || '') === fileURLToPath(import.meta.url)) {
-  const at = process.argv.indexOf('--config');
-  diagnose(at >= 0 ? process.argv[at + 1] : path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../config/local.json')).catch(error => { console.error(`Diagnostic failed: ${error.message}`); process.exitCode = 1; });
+  try {
+    const { values } = parseArgs({ options: {
+      config: { type: 'string' }, desktop: { type: 'boolean' }, 'harness-home': { type: 'string' },
+    } });
+    if (values.desktop) {
+      if (values.config) throw new Error('--desktop 使用 Harness 根目录配置，不能同时传入 --config');
+      const harnessHome = commandHarnessHome(values['harness-home']);
+      if (!harnessHome || !path.isAbsolute(harnessHome)) throw new Error('请提供 Harness 的绝对路径');
+      const entry = path.join(harnessHome, 'profiles/desktop/node_modules/dsh-plugin-tbea-knowledge');
+      const packageRoot = await fs.realpath(entry).catch(error => {
+        if (error.code === 'ENOENT') throw new Error(`未找到匠宝 desktop 插件入口：${entry}`, { cause: error });
+        throw error;
+      });
+      const manifest = JSON.parse(await fs.readFile(path.join(packageRoot, 'package.json'), 'utf8'));
+      console.log(`Desktop plugin: ${manifest.version}; ${packageRoot}`);
+      const { filename, options } = desktopConfigLocations(harnessHome, packageRoot);
+      await diagnose(filename, options);
+    } else {
+      if (values['harness-home']) throw new Error('--harness-home 需要 --desktop');
+      const filename = values.config ?? path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../config/local.json');
+      await diagnose(filename);
+    }
+  } catch (error) {
+    console.error(`Diagnostic failed: ${error.message}`);
+    process.exitCode = 1;
+  }
 }

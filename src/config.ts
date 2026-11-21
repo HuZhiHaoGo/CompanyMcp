@@ -10,13 +10,25 @@ export const PLATFORM_CHUNK_PATH = '/api/ai_apaas/v1/knowledgeBase?Action=Descri
 const LEGACY_SEARCH_PATH = '/api/ai_apaas/v1/knowledgebases/query';
 export const RETRIEVAL_DEFAULTS = Object.freeze({ perLibraryTop: 3, libraryTimeoutMs: 8000, roundTimeoutMs: 30000 });
 
-/** 配置只由服务端读取；AK/SK、图片鉴权和服务口令均不进入模型或浏览器。 */
-export async function readConfig(filename: string): Promise<ServiceConfig> {
-  const absolute = path.resolve(filename);
+interface ConfigLocations {
+  bundledPopplerBin?: string;
+  defaultDataDirectory?: string;
+}
+
+export function parseConfigJson(contents: string): Record<string, unknown> {
   let config: unknown;
-  const contents = (await fs.readFile(absolute, 'utf8')).replace(/^\uFEFF/, '');
-  try { config=JSON.parse(contents); } catch { throw new Error('配置文件不是有效 JSON，请检查英文引号、逗号和括号'); }
+  try { config=JSON.parse(contents.replace(/^\uFEFF/, '')); } catch { throw new Error('配置文件不是有效 JSON，请检查英文引号、逗号和括号'); }
   if (!isRecord(config)) throw new Error('配置文件的最外层必须为 JSON 对象');
+  return config;
+}
+
+/** 配置只由服务端读取；AK/SK、图片鉴权和服务口令均不进入模型或浏览器。 */
+export async function readConfig(filename: string, options?: ConfigLocations): Promise<ServiceConfig> {
+  return validateConfig(parseConfigJson(await fs.readFile(filename, 'utf8')), filename, options);
+}
+
+export async function validateConfig(config: Record<string, unknown>, filename: string, options: ConfigLocations = {}): Promise<ServiceConfig> {
+  const directoryPath = path.dirname(path.resolve(filename));
   const service = config.service;
   if (service !== undefined && !isRecord(service)) throw new Error('service 必须为对象');
   const autoStart = service?.autoStart;
@@ -48,7 +60,7 @@ export async function readConfig(filename: string): Promise<ServiceConfig> {
   if ((mode === 'mock' || directoryMode === 'static') && !knowledgeBases.length) throw new Error('演示或静态模式需要配置至少一个知识库');
   if (mode === 'live' && directoryMode === 'static' && knowledgeBases.some(k => k.id.startsWith('demo-'))) throw new Error('正式静态模式不能使用演示知识库 ID');
   if (config.dataDirectory && typeof config.dataDirectory !== 'string') throw new Error('dataDirectory 必须为目录路径');
-  const dataDirectory = path.resolve(path.dirname(absolute), typeof config.dataDirectory === 'string' && config.dataDirectory ? config.dataDirectory : '../data');
+  const dataDirectory = path.resolve(directoryPath, typeof config.dataDirectory === 'string' && config.dataDirectory ? config.dataDirectory : options.defaultDataDirectory ?? '../data');
   const limits = { top: 10, maxEvidenceChunks: 5, maxQueryCharacters: 1024, maxTextCharacters: 30000, maxImageBytes: 15 * 1024 * 1024, maxCacheBytes: 512 * 1024 * 1024, maxSnapshots: 500, ...(isRecord(config.limits) ? config.limits : {}) };
   for (const [key, value] of Object.entries(limits)) if (!Number.isSafeInteger(value) || value < 1) throw new Error(`limits.${key} 必须为正整数`);
   if (limits.top > 20 || limits.maxEvidenceChunks > 20 || limits.maxSnapshots > 10000 || limits.maxQueryCharacters > 1024) throw new Error('检索数量、快照数量或 query 长度超过限制');
@@ -71,7 +83,7 @@ export async function readConfig(filename: string): Promise<ServiceConfig> {
     ...config, mode, port, serviceToken, platform, knowledgeBases, dataDirectory, limits,
     retrieval: { ...retrieval, evidenceScoreThreshold: evidenceThreshold, diagnostics: overrides.diagnostics, synonyms: readSynonyms(overrides.synonyms),
       semanticReview: overrides.semanticReview === false ? false : undefined, semanticModelOrigins: readModelOrigins(overrides.semanticModelOrigins) },
-    documentPreview: await readDocumentPreview(config.documentPreview, path.dirname(absolute)),
+    documentPreview: await readDocumentPreview(config.documentPreview, directoryPath, options.bundledPopplerBin),
     service: service && { ...service, autoStart },
     knowledgeDirectory: { mode: directoryMode, refreshSeconds },
     // 未配置的旧版本继续允许模型按需检索。
@@ -108,7 +120,7 @@ function readSynonyms(value: unknown): EvidenceSynonym[] | undefined {
   });
 }
 
-async function readDocumentPreview(value: unknown, directory: string): Promise<DocumentPreviewConfig | undefined> {
+async function readDocumentPreview(value: unknown, directory: string, bundledPopplerBin?: string): Promise<DocumentPreviewConfig | undefined> {
   if (value === undefined) return undefined;
   if (!isRecord(value) || typeof value.enabled !== 'boolean') throw new Error('documentPreview.enabled 必须为 true 或 false');
   function program(input: unknown, key: string) {
@@ -125,14 +137,20 @@ async function readDocumentPreview(value: unknown, directory: string): Promise<D
   }
   let info = program(pdfInfo, 'pdfInfo');
   let ppm = program(pdfToPpm, 'pdfToPpm');
-  if (value.enabled && process.platform === 'win32' && (!info || !ppm)) {
-    const bin = path.resolve(directory, '../tools/poppler/Library/bin');
-    async function bundledProgram(name: string) {
-      const filename = path.join(bin, name);
-      const file = await fs.stat(filename).catch(() => undefined);
-      return file?.isFile() ? filename : undefined;
+  if (value.enabled && process.platform === 'win32') {
+    const legacyBin = path.resolve(directory, '../tools/poppler/Library/bin');
+    const offlineBin = path.resolve(directory, '../plugin/tools/poppler/Library/bin');
+    async function bundledProgram(name: string, configured: string | undefined, original: unknown) {
+      const legacyDefault = !bundledPopplerBin && typeof original === 'string' && !path.isAbsolute(original)
+        && configured === path.join(legacyBin, name);
+      if (configured && !legacyDefault) return configured;
+      for (const bin of bundledPopplerBin ? [bundledPopplerBin] : [legacyBin, offlineBin]) {
+        const filename = path.join(bin, name);
+        if ((await fs.stat(filename).catch(() => undefined))?.isFile()) return filename;
+      }
+      return configured;
     }
-    [info, ppm] = await Promise.all([info ?? bundledProgram('pdfinfo.exe'), ppm ?? bundledProgram('pdftoppm.exe')]);
+    [info, ppm] = await Promise.all([bundledProgram('pdfinfo.exe', info, pdfInfo), bundledProgram('pdftoppm.exe', ppm, pdfToPpm)]);
   }
   if (value.enabled && (!info || !ppm)) throw new Error('启用正式原文预览需要配置 pdfInfo 和 pdfToPpm');
   return { enabled: value.enabled, pdfInfo: info, pdfToPpm: ppm, office: program(office, 'office'), converters };

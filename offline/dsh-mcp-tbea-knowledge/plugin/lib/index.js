@@ -3264,8 +3264,8 @@ var require_utils = __commonJS({
       }
       return ind;
     }
-    function removeDotSegments(path10) {
-      let input = path10;
+    function removeDotSegments(path11) {
+      let input = path11;
       const output = [];
       let nextSlash = -1;
       let len = 0;
@@ -3339,11 +3339,11 @@ var require_utils = __commonJS({
       }
       return output.join("");
     }
-    function removeDotSegmentsRelative(path10) {
-      if (path10 === "" || path10[0] === "/") {
-        return removeDotSegments(path10);
+    function removeDotSegmentsRelative(path11) {
+      if (path11 === "" || path11[0] === "/") {
+        return removeDotSegments(path11);
       }
-      const segments = path10.split("/");
+      const segments = path11.split("/");
       const last = segments.length - 1;
       const output = [];
       let trailingDirectory = false;
@@ -3706,8 +3706,8 @@ var require_schemes = __commonJS({
       }
       if (wsComponent.resourceName) {
         const queryIndex = wsComponent.resourceName.indexOf("?");
-        const path10 = queryIndex === -1 ? wsComponent.resourceName : wsComponent.resourceName.slice(0, queryIndex);
-        wsComponent.path = path10 && path10 !== "/" ? path10 : void 0;
+        const path11 = queryIndex === -1 ? wsComponent.resourceName : wsComponent.resourceName.slice(0, queryIndex);
+        wsComponent.path = path11 && path11 !== "/" ? path11 : void 0;
         wsComponent.query = queryIndex === -1 ? void 0 : wsComponent.resourceName.slice(queryIndex + 1);
         wsComponent.resourceName = void 0;
       }
@@ -22222,7 +22222,8 @@ var require_punycode = __commonJS({
 });
 
 // plugin/src/host.mjs
-import path9 from "node:path";
+import path10 from "node:path";
+import { fileURLToPath as fileURLToPath3 } from "node:url";
 import { AsyncLocalStorage } from "node:async_hooks";
 
 // node_modules/zod/v4/core/util.js
@@ -22462,10 +22463,10 @@ function mergeDefs(...defs) {
 function cloneDef(schema) {
   return mergeDefs(schema._zod.def);
 }
-function getElementAtPath(obj, path10) {
-  if (!path10)
+function getElementAtPath(obj, path11) {
+  if (!path11)
     return obj;
-  return path10.reduce((acc, key) => acc?.[key], obj);
+  return path11.reduce((acc, key) => acc?.[key], obj);
 }
 function promiseAllObject(promisesObj) {
   const keys = Object.keys(promisesObj);
@@ -22805,11 +22806,11 @@ function explicitlyAborted(x, startIndex = 0) {
   }
   return false;
 }
-function prefixIssues(path10, issues) {
+function prefixIssues(path11, issues) {
   return issues.map((iss) => {
     var _a5;
     (_a5 = iss).path ?? (_a5.path = []);
-    iss.path.unshift(path10);
+    iss.path.unshift(path11);
     return iss;
   });
 }
@@ -23270,16 +23271,16 @@ function flattenError(error3, mapper = (issue2) => issue2.message) {
 }
 function formatError(error3, mapper = (issue2) => issue2.message) {
   const fieldErrors = { _errors: [] };
-  const processError = (error4, path10 = []) => {
+  const processError = (error4, path11 = []) => {
     for (const issue2 of error4.issues) {
       if (issue2.code === "invalid_union" && issue2.errors.length) {
-        issue2.errors.map((issues) => processError({ issues }, [...path10, ...issue2.path]));
+        issue2.errors.map((issues) => processError({ issues }, [...path11, ...issue2.path]));
       } else if (issue2.code === "invalid_key") {
-        processError({ issues: issue2.issues }, [...path10, ...issue2.path]);
+        processError({ issues: issue2.issues }, [...path11, ...issue2.path]);
       } else if (issue2.code === "invalid_element") {
-        processError({ issues: issue2.issues }, [...path10, ...issue2.path]);
+        processError({ issues: issue2.issues }, [...path11, ...issue2.path]);
       } else {
-        const fullpath = [...path10, ...issue2.path];
+        const fullpath = [...path11, ...issue2.path];
         if (fullpath.length === 0) {
           fieldErrors._errors.push(mapper(issue2));
         } else {
@@ -51928,7 +51929,7 @@ function transformGfmAutolinkLiterals(tree) {
     { ignore: ["link", "linkReference"] }
   );
 }
-function findUrl(_, protocol, domain2, path10, match2) {
+function findUrl(_, protocol, domain2, path11, match2) {
   let prefix = "";
   if (!previous2(match2)) {
     return false;
@@ -51941,7 +51942,7 @@ function findUrl(_, protocol, domain2, path10, match2) {
   if (!isCorrectDomain(domain2)) {
     return false;
   }
-  const parts = splitUrl(domain2 + path10);
+  const parts = splitUrl(domain2 + path11);
   if (!parts[0]) return false;
   const result = {
     type: "link",
@@ -52798,16 +52799,21 @@ var PLATFORM_LIST_PATH = "/api/ai_apaas/v1/knowledgeBase?Action=DescribeKnowledg
 var PLATFORM_CHUNK_PATH = "/api/ai_apaas/v1/knowledgeBase?Action=DescribeChunk";
 var LEGACY_SEARCH_PATH = "/api/ai_apaas/v1/knowledgebases/query";
 var RETRIEVAL_DEFAULTS = Object.freeze({ perLibraryTop: 3, libraryTimeoutMs: 8e3, roundTimeoutMs: 3e4 });
-async function readConfig(filename) {
-  const absolute = path2.resolve(filename);
+function parseConfigJson(contents) {
   let config2;
-  const contents = (await fs.readFile(absolute, "utf8")).replace(/^\uFEFF/, "");
   try {
-    config2 = JSON.parse(contents);
+    config2 = JSON.parse(contents.replace(/^\uFEFF/, ""));
   } catch {
     throw new Error("\u914D\u7F6E\u6587\u4EF6\u4E0D\u662F\u6709\u6548 JSON\uFF0C\u8BF7\u68C0\u67E5\u82F1\u6587\u5F15\u53F7\u3001\u9017\u53F7\u548C\u62EC\u53F7");
   }
   if (!isRecord(config2)) throw new Error("\u914D\u7F6E\u6587\u4EF6\u7684\u6700\u5916\u5C42\u5FC5\u987B\u4E3A JSON \u5BF9\u8C61");
+  return config2;
+}
+async function readConfig(filename, options) {
+  return validateConfig(parseConfigJson(await fs.readFile(filename, "utf8")), filename, options);
+}
+async function validateConfig(config2, filename, options = {}) {
+  const directoryPath = path2.dirname(path2.resolve(filename));
   const service = config2.service;
   if (service !== void 0 && !isRecord(service)) throw new Error("service \u5FC5\u987B\u4E3A\u5BF9\u8C61");
   const autoStart = service?.autoStart;
@@ -52837,7 +52843,7 @@ async function readConfig(filename) {
   if ((mode === "mock" || directoryMode === "static") && !knowledgeBases.length) throw new Error("\u6F14\u793A\u6216\u9759\u6001\u6A21\u5F0F\u9700\u8981\u914D\u7F6E\u81F3\u5C11\u4E00\u4E2A\u77E5\u8BC6\u5E93");
   if (mode === "live" && directoryMode === "static" && knowledgeBases.some((k) => k.id.startsWith("demo-"))) throw new Error("\u6B63\u5F0F\u9759\u6001\u6A21\u5F0F\u4E0D\u80FD\u4F7F\u7528\u6F14\u793A\u77E5\u8BC6\u5E93 ID");
   if (config2.dataDirectory && typeof config2.dataDirectory !== "string") throw new Error("dataDirectory \u5FC5\u987B\u4E3A\u76EE\u5F55\u8DEF\u5F84");
-  const dataDirectory = path2.resolve(path2.dirname(absolute), typeof config2.dataDirectory === "string" && config2.dataDirectory ? config2.dataDirectory : "../data");
+  const dataDirectory = path2.resolve(directoryPath, typeof config2.dataDirectory === "string" && config2.dataDirectory ? config2.dataDirectory : options.defaultDataDirectory ?? "../data");
   const limits = { top: 10, maxEvidenceChunks: 5, maxQueryCharacters: 1024, maxTextCharacters: 3e4, maxImageBytes: 15 * 1024 * 1024, maxCacheBytes: 512 * 1024 * 1024, maxSnapshots: 500, ...isRecord(config2.limits) ? config2.limits : {} };
   for (const [key, value] of Object.entries(limits)) if (!Number.isSafeInteger(value) || value < 1) throw new Error(`limits.${key} \u5FC5\u987B\u4E3A\u6B63\u6574\u6570`);
   if (limits.top > 20 || limits.maxEvidenceChunks > 20 || limits.maxSnapshots > 1e4 || limits.maxQueryCharacters > 1024) throw new Error("\u68C0\u7D22\u6570\u91CF\u3001\u5FEB\u7167\u6570\u91CF\u6216 query \u957F\u5EA6\u8D85\u8FC7\u9650\u5236");
@@ -52872,7 +52878,7 @@ async function readConfig(filename) {
       semanticReview: overrides.semanticReview === false ? false : void 0,
       semanticModelOrigins: readModelOrigins(overrides.semanticModelOrigins)
     },
-    documentPreview: await readDocumentPreview(config2.documentPreview, path2.dirname(absolute)),
+    documentPreview: await readDocumentPreview(config2.documentPreview, directoryPath, options.bundledPopplerBin),
     service: service && { ...service, autoStart },
     knowledgeDirectory: { mode: directoryMode, refreshSeconds },
     // 未配置的旧版本继续允许模型按需检索。
@@ -52907,7 +52913,7 @@ function readSynonyms(value) {
     return { term: item.term.trim(), aliases: words2(item.aliases), context: words2(item.context) };
   });
 }
-async function readDocumentPreview(value, directory) {
+async function readDocumentPreview(value, directory, bundledPopplerBin) {
   if (value === void 0) return void 0;
   if (!isRecord(value) || typeof value.enabled !== "boolean") throw new Error("documentPreview.enabled \u5FC5\u987B\u4E3A true \u6216 false");
   function program(input, key) {
@@ -52924,14 +52930,19 @@ async function readDocumentPreview(value, directory) {
   }
   let info = program(pdfInfo, "pdfInfo");
   let ppm = program(pdfToPpm, "pdfToPpm");
-  if (value.enabled && process.platform === "win32" && (!info || !ppm)) {
-    const bin = path2.resolve(directory, "../tools/poppler/Library/bin");
-    async function bundledProgram(name3) {
-      const filename = path2.join(bin, name3);
-      const file = await fs.stat(filename).catch(() => void 0);
-      return file?.isFile() ? filename : void 0;
+  if (value.enabled && process.platform === "win32") {
+    const legacyBin = path2.resolve(directory, "../tools/poppler/Library/bin");
+    const offlineBin = path2.resolve(directory, "../plugin/tools/poppler/Library/bin");
+    async function bundledProgram(name3, configured, original) {
+      const legacyDefault = !bundledPopplerBin && typeof original === "string" && !path2.isAbsolute(original) && configured === path2.join(legacyBin, name3);
+      if (configured && !legacyDefault) return configured;
+      for (const bin of bundledPopplerBin ? [bundledPopplerBin] : [legacyBin, offlineBin]) {
+        const filename = path2.join(bin, name3);
+        if ((await fs.stat(filename).catch(() => void 0))?.isFile()) return filename;
+      }
+      return configured;
     }
-    [info, ppm] = await Promise.all([info ?? bundledProgram("pdfinfo.exe"), ppm ?? bundledProgram("pdftoppm.exe")]);
+    [info, ppm] = await Promise.all([bundledProgram("pdfinfo.exe", info, pdfInfo), bundledProgram("pdftoppm.exe", ppm, pdfToPpm)]);
   }
   if (value.enabled && (!info || !ppm)) throw new Error("\u542F\u7528\u6B63\u5F0F\u539F\u6587\u9884\u89C8\u9700\u8981\u914D\u7F6E pdfInfo \u548C pdfToPpm");
   return { enabled: value.enabled, pdfInfo: info, pdfToPpm: ppm, office: program(office, "office"), converters };
@@ -53888,9 +53899,25 @@ var KnowledgeService = class {
   }
 };
 
+// src/desktop-config.ts
+import path4 from "node:path";
+var DESKTOP_CONFIG = "dsh-mcp-tbea-knowledge.json";
+function desktopConfigLocations(harnessHome, packageRoot) {
+  if (!harnessHome || !path4.isAbsolute(harnessHome)) {
+    throw new Error("\u65E0\u6CD5\u5B9A\u4F4D\u5320\u5B9D Harness \u76EE\u5F55\uFF0C\u8BF7\u68C0\u67E5 DSH_HOME \u6216\u6307\u5B9A Harness \u7684\u7EDD\u5BF9\u8DEF\u5F84");
+  }
+  return {
+    filename: path4.join(harnessHome, DESKTOP_CONFIG),
+    options: {
+      bundledPopplerBin: path4.join(packageRoot, "tools", "poppler", "Library", "bin"),
+      defaultDataDirectory: path4.join(harnessHome, "dsh-mcp-tbea-knowledge-data")
+    }
+  };
+}
+
 // src/runtime.ts
 import { createHmac } from "node:crypto";
-var SERVICE_VERSION = "0.11.5";
+var SERVICE_VERSION = "0.11.6";
 var RUNTIME_PROTOCOL = "tbea-runtime/v1";
 function canonical(value) {
   if (Array.isArray(value)) return value.map(canonical);
@@ -53907,11 +53934,11 @@ function configIdentity(config2) {
 
 // plugin/src/selection.mjs
 import fs3 from "node:fs/promises";
-import path4 from "node:path";
+import path5 from "node:path";
 import { createHash as createHash4, randomUUID as randomUUID4 } from "node:crypto";
 var SelectionStore = class {
   constructor(directory) {
-    this.directory = path4.join(directory, "dsh-selection");
+    this.directory = path5.join(directory, "dsh-selection");
     this.states = /* @__PURE__ */ new Map();
     this.writes = Promise.resolve();
   }
@@ -53925,7 +53952,7 @@ var SelectionStore = class {
     if (this.states.has(key)) return this.states.get(key);
     let data;
     try {
-      data = JSON.parse(await fs3.readFile(path4.join(this.directory, `${key}.json`), "utf8"));
+      data = JSON.parse(await fs3.readFile(path5.join(this.directory, `${key}.json`), "utf8"));
     } catch (error3) {
       if (error3.code !== "ENOENT") throw new Error("\u516C\u53F8\u77E5\u8BC6\u5E93\u9009\u62E9\u914D\u7F6E\u8BFB\u53D6\u5931\u8D25\uFF0C\u8BF7\u68C0\u67E5 data/dsh-selection");
     }
@@ -53939,7 +53966,7 @@ var SelectionStore = class {
     if (typeof selected !== "boolean") throw new Error("\u516C\u53F8\u77E5\u8BC6\u5E93\u5F00\u5173\u5FC5\u987B\u4E3A\u5E03\u5C14\u503C");
     const operation = this.writes.then(async () => {
       await fs3.mkdir(this.directory, { recursive: true });
-      const file = path4.join(this.directory, `${key}.json`);
+      const file = path5.join(this.directory, `${key}.json`);
       const temporary = `${file}.${randomUUID4()}.tmp`;
       try {
         await fs3.writeFile(temporary, JSON.stringify({ schema: "tbea-selection/v1", selected }));
@@ -54018,7 +54045,7 @@ function createPrefetch({ selections, callTool, status, autoRetrieveKnowledge = 
 // src/server.ts
 import http from "node:http";
 import fs7 from "node:fs/promises";
-import path8 from "node:path";
+import path9 from "node:path";
 import { fileURLToPath } from "node:url";
 import { timingSafeEqual } from "node:crypto";
 
@@ -56719,7 +56746,7 @@ var StreamableHTTPServerTransport = class {
 import { randomUUID as randomUUID6 } from "node:crypto";
 import fs6 from "node:fs/promises";
 import os from "node:os";
-import path7 from "node:path";
+import path8 from "node:path";
 
 // src/documents.ts
 var actions = "/openapi/v1/knowledgeBase?Action=";
@@ -56825,14 +56852,14 @@ import { execFile } from "node:child_process";
 import { randomUUID as randomUUID5 } from "node:crypto";
 import { createWriteStream } from "node:fs";
 import fs5 from "node:fs/promises";
-import path6 from "node:path";
+import path7 from "node:path";
 import { Readable as Readable2 } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { pathToFileURL } from "node:url";
 
 // src/preview-content.ts
 import fs4 from "node:fs/promises";
-import path5 from "node:path";
+import path6 from "node:path";
 
 // node_modules/mailparser/dist/esm/mail-parser.js
 var import_mailsplit = __toESM(require_mailsplit(), 1);
@@ -61312,8 +61339,8 @@ function trimCharacterEnd(str2, char) {
 function unicodeEscape(str2) {
   return str2.replace(/[\s\S]/g, (c) => "\\u" + c.charCodeAt().toString(16).padStart(4, "0"));
 }
-function get(obj, path10) {
-  for (const key of path10) {
+function get(obj, path11) {
+  for (const key of path11) {
     if (!obj) {
       return void 0;
     }
@@ -62514,8 +62541,8 @@ function withBrackets(str2, brackets) {
   const rbr = typeof brackets[1] === "string" ? brackets[1] : "]";
   return lbr + str2 + rbr;
 }
-function pathRewrite(path10, rewriter, baseUrl, metadata, elem) {
-  const modifiedPath = typeof rewriter === "function" ? rewriter(path10, metadata, elem) : path10;
+function pathRewrite(path11, rewriter, baseUrl, metadata, elem) {
+  const modifiedPath = typeof rewriter === "function" ? rewriter(path11, metadata, elem) : path11;
   return modifiedPath[0] === "/" && baseUrl ? trimCharacterEnd(baseUrl, "/") + modifiedPath : modifiedPath;
 }
 function formatImage(elem, walk, builder, formatOptions) {
@@ -62839,9 +62866,9 @@ function handleDeprecatedOptions(options) {
     options.selectors.push(...tagDefinitions);
     options.selectors = mergeDuplicatesPreferLast(options.selectors, ((s) => s.selector));
   }
-  function set(obj, path10, value) {
-    const valueKey = path10.pop();
-    for (const key of path10) {
+  function set(obj, path11, value) {
+    const valueKey = path11.pop();
+    for (const key of path11) {
       let nested = obj[key];
       if (!nested) {
         nested = {};
@@ -69681,7 +69708,7 @@ async function staticHtml(input, directory, embedded = /* @__PURE__ */ new Map()
       if (!ext || !bytes || images >= 200 || imageBytes + bytes.length > 20 * 1024 * 1024) return alt ? `<span>${escape4(alt)}</span>` : "";
       const name3 = `inline-${++images}.${ext}`;
       imageBytes += bytes.length;
-      await fs4.writeFile(path5.join(directory, name3), bytes);
+      await fs4.writeFile(path6.join(directory, name3), bytes);
       const width = attrs.get("width") ?? "";
       const height = attrs.get("height") ?? "";
       const dimensions = [width, height].every((n) => /^\d{1,4}$/.test(n)) ? ` width="${Math.min(620, Number(width))}" height="${Math.round(Math.min(1, 620 / Number(width)) * Number(height))}"` : ' width="480"';
@@ -69727,7 +69754,7 @@ async function webDocument(input, format, directory) {
     const value = decode7(bytes, format);
     html = format === "md" ? micromark(value, { extensions: [gfm()], htmlExtensions: [gfmHtml()] }) : format === "txt" ? `<p>${escape4(value).replace(/\r\n?|\n/g, "<br>")}</p>` : value;
   }
-  const target = path5.join(directory, "content.html");
+  const target = path6.join(directory, "content.html");
   await fs4.writeFile(target, await staticHtml(html, directory, embedded));
   return target;
 }
@@ -69821,14 +69848,14 @@ var officeRegistry = `<?xml version="1.0" encoding="UTF-8"?>
 <item oor:path="/org.openoffice.Office.Writer/Content/Update"><prop oor:name="Link" oor:op="fuse"><value>0</value></prop></item>
 </oor:items>`;
 async function convertOffice(input, directory, program, signal) {
-  const profile = path6.join(directory, "office-profile");
-  await fs5.mkdir(path6.join(profile, "user"), { recursive: true });
-  await fs5.writeFile(path6.join(profile, "user", "registrymodifications.xcu"), officeRegistry);
+  const profile = path7.join(directory, "office-profile");
+  await fs5.mkdir(path7.join(profile, "user"), { recursive: true });
+  await fs5.writeFile(path7.join(profile, "user", "registrymodifications.xcu"), officeRegistry);
   await run(program, [`-env:UserInstallation=${pathToFileURL(profile).href}`, "--headless", "--invisible", "--norestore", "--convert-to", "pdf", "--outdir", directory, input], directory, signal, "\u6587\u6863\u8F6C\u6362\u5931\u8D25\uFF0C\u53EF\u80FD\u9700\u8981\u7BA1\u7406\u5458\u914D\u7F6E\u9002\u914D\u8BE5\u683C\u5F0F\u7684\u8F6C\u6362\u7EC4\u4EF6");
-  return path6.join(directory, `${path6.parse(input).name}.pdf`);
+  return path7.join(directory, `${path7.parse(input).name}.pdf`);
 }
 async function prepareDocument(settings, address, format, directory, signal, fetcher = fetch) {
-  const original = path6.join(directory, `input.${format}`);
+  const original = path7.join(directory, `input.${format}`);
   await download(address, original, format, signal, fetcher);
   validateInput(await header(original), format);
   let pdf = original;
@@ -69836,7 +69863,7 @@ async function prepareDocument(settings, address, format, directory, signal, fet
     try {
       const converter = settings.converters[format];
       if (converter) {
-        pdf = path6.join(directory, "converted.pdf");
+        pdf = path7.join(directory, "converted.pdf");
         await run(converter, [original, pdf], directory, signal, "\u4E13\u7528\u7EC4\u4EF6\u672A\u80FD\u8F6C\u6362\u8BE5\u6587\u6863\uFF0C\u8BF7\u8054\u7CFB\u7BA1\u7406\u5458\u68C0\u67E5\u683C\u5F0F\u517C\u5BB9\u6027");
       } else {
         if (!settings.office) throw new PlatformError("CONVERTER_REQUIRED", "\u7BA1\u7406\u5458\u5C1A\u672A\u914D\u7F6E\u6B64\u683C\u5F0F\u7684\u8F6C\u6362\u7EC4\u4EF6");
@@ -69856,7 +69883,7 @@ async function prepareDocument(settings, address, format, directory, signal, fet
   return { pdf, pages };
 }
 async function renderDocumentPage(settings, pdf, page, directory, signal) {
-  const prefix = path6.join(directory, `page-${page}-${randomUUID5()}`);
+  const prefix = path7.join(directory, `page-${page}-${randomUUID5()}`);
   const output = `${prefix}.png`;
   try {
     await run(settings.pdfToPpm, ["-f", String(page), "-l", String(page), "-scale-to", "1800", "-png", "-singlefile", pdf, prefix], directory, signal, "\u9875\u9762\u6E32\u67D3\u5931\u8D25\uFF0C\u8BF7\u91CD\u8BD5");
@@ -69961,7 +69988,7 @@ var LibraryBrowser = class {
       this.reservations++;
       let directory;
       try {
-        directory = this.mock ? void 0 : await fs6.mkdtemp(path7.join(os.tmpdir(), "tbea-preview-"));
+        directory = this.mock ? void 0 : await fs6.mkdtemp(path8.join(os.tmpdir(), "tbea-preview-"));
         const data = directory && address ? await prepareDocument(this.config.documentPreview, address, doc.info.format, directory, shared, this.fetcher) : { pages: ["pdf", "doc", "docx", "ppt", "pptx", "ofd", "dps", "dpsx", "wps"].includes(doc.info.format) ? 4 : 1, pdf: void 0 };
         shared.throwIfAborted();
         const entry = { id: randomUUID6(), library, documentId, directory, ...data, touched: Date.now(), renders: 0 };
@@ -70083,8 +70110,8 @@ async function createKnowledgeServer(config2, options = {}) {
         const files = { "/demo": "index.html", "/demo/": "index.html", "/demo/demo.js": "demo.js", "/demo/demo.css": "demo.css" };
         const name3 = files[url2.pathname];
         if (!name3) return send(res, 404, { error: "\u672A\u627E\u5230\u8D44\u6E90" });
-        const root = options.demoDirectory || path8.join(path8.dirname(fileURLToPath(import.meta.url)), "demo");
-        const bytes = await fs7.readFile(path8.join(root, name3));
+        const root = options.demoDirectory || path9.join(path9.dirname(fileURLToPath(import.meta.url)), "demo");
+        const bytes = await fs7.readFile(path9.join(root, name3));
         return send(res, 200, bytes, name3.endsWith(".html") ? "text/html; charset=utf-8" : name3.endsWith(".css") ? "text/css" : "text/javascript");
       }
       if (!authorized(req, config2.serviceToken)) return send(res, 401, { error: "\u670D\u52A1\u53E3\u4EE4\u65E0\u6548" });
@@ -70206,7 +70233,7 @@ async function main() {
     void app.close().then(() => process.exit(0));
   });
 }
-if (process.argv[1] && path8.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) main().catch((error3) => {
+if (process.argv[1] && path9.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) main().catch((error3) => {
   console.error(error3 instanceof Error ? error3.message : "\u542F\u52A8\u5931\u8D25");
   process.exitCode = 1;
 });
@@ -70487,18 +70514,26 @@ var displayPath = "/api/tbea-knowledge";
 var name2 = "tbea-knowledge";
 var inject = ["tools", "connection", "agents"];
 async function apply(ctx, config2 = {}) {
-  if (!config2.configFile || !path9.isAbsolute(config2.configFile)) throw new Error("\u8BF7\u5728\u63D2\u4EF6\u914D\u7F6E\u4E2D\u8BBE\u7F6E configFile \u7684\u7EDD\u5BF9\u8DEF\u5F84");
-  const local = await readConfig(config2.configFile);
+  const explicitConfig = config2.configFile !== void 0;
+  if (explicitConfig && (typeof config2.configFile !== "string" || !path10.isAbsolute(config2.configFile))) {
+    throw new Error("\u8BF7\u5728\u63D2\u4EF6\u914D\u7F6E\u4E2D\u8BBE\u7F6E configFile \u7684\u7EDD\u5BF9\u8DEF\u5F84");
+  }
+  const packageRoot = fileURLToPath3(new URL("..", import.meta.url));
+  const projectRoot = config2.projectRoot || (explicitConfig ? path10.resolve(path10.dirname(config2.configFile), "..") : packageRoot);
+  if (typeof projectRoot !== "string" || !path10.isAbsolute(projectRoot)) throw new Error("projectRoot \u5FC5\u987B\u4E3A\u9879\u76EE\u7684\u7EDD\u5BF9\u8DEF\u5F84");
+  const locations = explicitConfig ? { filename: config2.configFile } : desktopConfigLocations(process.env.DSH_HOME, projectRoot);
+  const local = await readConfig(locations.filename, locations.options).catch((error3) => {
+    if (error3.code === "ENOENT") throw new Error(`\u77E5\u8BC6\u5E93\u914D\u7F6E\u6587\u4EF6\u4E0D\u5B58\u5728\uFF0C\u8BF7\u5148\u8FD0\u884C\u7BA1\u7406\u5458\u521D\u59CB\u5316\u811A\u672C\uFF1A${locations.filename}`, { cause: error3 });
+    throw error3;
+  });
   const { autoRetrieveKnowledge } = local;
-  const projectRoot = config2.projectRoot || path9.resolve(path9.dirname(config2.configFile), "..");
-  if (!path9.isAbsolute(projectRoot)) throw new Error("projectRoot \u5FC5\u987B\u4E3A\u9879\u76EE\u7684\u7EDD\u5BF9\u8DEF\u5F84");
   if (typeof local.serviceToken !== "string" || local.serviceToken.length < 32 || !Number.isInteger(local.port)) throw new Error("\u77E5\u8BC6\u670D\u52A1\u914D\u7F6E\u672A\u521D\u59CB\u5316");
   const base = `http://127.0.0.1:${local.port}`;
   const authorization = `Bearer ${local.serviceToken}`;
   const lifetime = new AbortController();
   let connection;
   let connecting;
-  const service = new ServiceManager(local, { demoDirectory: path9.join(projectRoot, "dist/demo") });
+  const service = new ServiceManager(local, { demoDirectory: path10.join(projectRoot, "dist/demo") });
   const clients = /* @__PURE__ */ new Set();
   const requestScope = new AsyncLocalStorage();
   const selections = new SelectionStore(local.dataDirectory);

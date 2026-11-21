@@ -3258,8 +3258,8 @@ var require_utils = __commonJS({
       }
       return ind;
     }
-    function removeDotSegments(path3) {
-      let input = path3;
+    function removeDotSegments(path4) {
+      let input = path4;
       const output = [];
       let nextSlash = -1;
       let len = 0;
@@ -3333,11 +3333,11 @@ var require_utils = __commonJS({
       }
       return output.join("");
     }
-    function removeDotSegmentsRelative(path3) {
-      if (path3 === "" || path3[0] === "/") {
-        return removeDotSegments(path3);
+    function removeDotSegmentsRelative(path4) {
+      if (path4 === "" || path4[0] === "/") {
+        return removeDotSegments(path4);
       }
-      const segments = path3.split("/");
+      const segments = path4.split("/");
       const last = segments.length - 1;
       const output = [];
       let trailingDirectory = false;
@@ -3700,8 +3700,8 @@ var require_schemes = __commonJS({
       }
       if (wsComponent.resourceName) {
         const queryIndex = wsComponent.resourceName.indexOf("?");
-        const path3 = queryIndex === -1 ? wsComponent.resourceName : wsComponent.resourceName.slice(0, queryIndex);
-        wsComponent.path = path3 && path3 !== "/" ? path3 : void 0;
+        const path4 = queryIndex === -1 ? wsComponent.resourceName : wsComponent.resourceName.slice(0, queryIndex);
+        wsComponent.path = path4 && path4 !== "/" ? path4 : void 0;
         wsComponent.query = queryIndex === -1 ? void 0 : wsComponent.resourceName.slice(queryIndex + 1);
         wsComponent.resourceName = void 0;
       }
@@ -7238,12 +7238,12 @@ var require_dist = __commonJS({
         throw new Error(`Unknown format "${name}"`);
       return f;
     };
-    function addFormats(ajv, list, fs2, exportName) {
+    function addFormats(ajv, list, fs3, exportName) {
       var _a3;
       var _b;
       (_a3 = (_b = ajv.opts.code).formats) !== null && _a3 !== void 0 ? _a3 : _b.formats = (0, codegen_1._)`require("ajv-formats/dist/formats").${exportName}`;
       for (const f of list)
-        ajv.addFormat(f, fs2[f]);
+        ajv.addFormat(f, fs3[f]);
     }
     module.exports = exports = formatsPlugin;
     Object.defineProperty(exports, "__esModule", { value: true });
@@ -7356,8 +7356,10 @@ var require_content_type = __commonJS({
 });
 
 // scripts/doctor.mjs
-import path2 from "node:path";
+import path3 from "node:path";
+import fs2 from "node:fs/promises";
 import { fileURLToPath } from "node:url";
+import { parseArgs } from "node:util";
 
 // src/config.ts
 import fs from "node:fs/promises";
@@ -7375,16 +7377,21 @@ var PLATFORM_LIST_PATH = "/api/ai_apaas/v1/knowledgeBase?Action=DescribeKnowledg
 var PLATFORM_CHUNK_PATH = "/api/ai_apaas/v1/knowledgeBase?Action=DescribeChunk";
 var LEGACY_SEARCH_PATH = "/api/ai_apaas/v1/knowledgebases/query";
 var RETRIEVAL_DEFAULTS = Object.freeze({ perLibraryTop: 3, libraryTimeoutMs: 8e3, roundTimeoutMs: 3e4 });
-async function readConfig(filename) {
-  const absolute = path.resolve(filename);
+function parseConfigJson(contents) {
   let config2;
-  const contents = (await fs.readFile(absolute, "utf8")).replace(/^\uFEFF/, "");
   try {
-    config2 = JSON.parse(contents);
+    config2 = JSON.parse(contents.replace(/^\uFEFF/, ""));
   } catch {
     throw new Error("\u914D\u7F6E\u6587\u4EF6\u4E0D\u662F\u6709\u6548 JSON\uFF0C\u8BF7\u68C0\u67E5\u82F1\u6587\u5F15\u53F7\u3001\u9017\u53F7\u548C\u62EC\u53F7");
   }
   if (!isRecord(config2)) throw new Error("\u914D\u7F6E\u6587\u4EF6\u7684\u6700\u5916\u5C42\u5FC5\u987B\u4E3A JSON \u5BF9\u8C61");
+  return config2;
+}
+async function readConfig(filename, options) {
+  return validateConfig(parseConfigJson(await fs.readFile(filename, "utf8")), filename, options);
+}
+async function validateConfig(config2, filename, options = {}) {
+  const directoryPath = path.dirname(path.resolve(filename));
   const service = config2.service;
   if (service !== void 0 && !isRecord(service)) throw new Error("service \u5FC5\u987B\u4E3A\u5BF9\u8C61");
   const autoStart = service?.autoStart;
@@ -7414,7 +7421,7 @@ async function readConfig(filename) {
   if ((mode === "mock" || directoryMode === "static") && !knowledgeBases.length) throw new Error("\u6F14\u793A\u6216\u9759\u6001\u6A21\u5F0F\u9700\u8981\u914D\u7F6E\u81F3\u5C11\u4E00\u4E2A\u77E5\u8BC6\u5E93");
   if (mode === "live" && directoryMode === "static" && knowledgeBases.some((k) => k.id.startsWith("demo-"))) throw new Error("\u6B63\u5F0F\u9759\u6001\u6A21\u5F0F\u4E0D\u80FD\u4F7F\u7528\u6F14\u793A\u77E5\u8BC6\u5E93 ID");
   if (config2.dataDirectory && typeof config2.dataDirectory !== "string") throw new Error("dataDirectory \u5FC5\u987B\u4E3A\u76EE\u5F55\u8DEF\u5F84");
-  const dataDirectory = path.resolve(path.dirname(absolute), typeof config2.dataDirectory === "string" && config2.dataDirectory ? config2.dataDirectory : "../data");
+  const dataDirectory = path.resolve(directoryPath, typeof config2.dataDirectory === "string" && config2.dataDirectory ? config2.dataDirectory : options.defaultDataDirectory ?? "../data");
   const limits = { top: 10, maxEvidenceChunks: 5, maxQueryCharacters: 1024, maxTextCharacters: 3e4, maxImageBytes: 15 * 1024 * 1024, maxCacheBytes: 512 * 1024 * 1024, maxSnapshots: 500, ...isRecord(config2.limits) ? config2.limits : {} };
   for (const [key, value] of Object.entries(limits)) if (!Number.isSafeInteger(value) || value < 1) throw new Error(`limits.${key} \u5FC5\u987B\u4E3A\u6B63\u6574\u6570`);
   if (limits.top > 20 || limits.maxEvidenceChunks > 20 || limits.maxSnapshots > 1e4 || limits.maxQueryCharacters > 1024) throw new Error("\u68C0\u7D22\u6570\u91CF\u3001\u5FEB\u7167\u6570\u91CF\u6216 query \u957F\u5EA6\u8D85\u8FC7\u9650\u5236");
@@ -7449,7 +7456,7 @@ async function readConfig(filename) {
       semanticReview: overrides.semanticReview === false ? false : void 0,
       semanticModelOrigins: readModelOrigins(overrides.semanticModelOrigins)
     },
-    documentPreview: await readDocumentPreview(config2.documentPreview, path.dirname(absolute)),
+    documentPreview: await readDocumentPreview(config2.documentPreview, directoryPath, options.bundledPopplerBin),
     service: service && { ...service, autoStart },
     knowledgeDirectory: { mode: directoryMode, refreshSeconds },
     // 未配置的旧版本继续允许模型按需检索。
@@ -7484,7 +7491,7 @@ function readSynonyms(value) {
     return { term: item.term.trim(), aliases: words(item.aliases), context: words(item.context) };
   });
 }
-async function readDocumentPreview(value, directory) {
+async function readDocumentPreview(value, directory, bundledPopplerBin) {
   if (value === void 0) return void 0;
   if (!isRecord(value) || typeof value.enabled !== "boolean") throw new Error("documentPreview.enabled \u5FC5\u987B\u4E3A true \u6216 false");
   function program(input, key) {
@@ -7501,14 +7508,19 @@ async function readDocumentPreview(value, directory) {
   }
   let info = program(pdfInfo, "pdfInfo");
   let ppm = program(pdfToPpm, "pdfToPpm");
-  if (value.enabled && process.platform === "win32" && (!info || !ppm)) {
-    const bin = path.resolve(directory, "../tools/poppler/Library/bin");
-    async function bundledProgram(name) {
-      const filename = path.join(bin, name);
-      const file = await fs.stat(filename).catch(() => void 0);
-      return file?.isFile() ? filename : void 0;
+  if (value.enabled && process.platform === "win32") {
+    const legacyBin = path.resolve(directory, "../tools/poppler/Library/bin");
+    const offlineBin = path.resolve(directory, "../plugin/tools/poppler/Library/bin");
+    async function bundledProgram(name, configured, original) {
+      const legacyDefault = !bundledPopplerBin && typeof original === "string" && !path.isAbsolute(original) && configured === path.join(legacyBin, name);
+      if (configured && !legacyDefault) return configured;
+      for (const bin of bundledPopplerBin ? [bundledPopplerBin] : [legacyBin, offlineBin]) {
+        const filename = path.join(bin, name);
+        if ((await fs.stat(filename).catch(() => void 0))?.isFile()) return filename;
+      }
+      return configured;
     }
-    [info, ppm] = await Promise.all([info ?? bundledProgram("pdfinfo.exe"), ppm ?? bundledProgram("pdftoppm.exe")]);
+    [info, ppm] = await Promise.all([bundledProgram("pdfinfo.exe", info, pdfInfo), bundledProgram("pdftoppm.exe", ppm, pdfToPpm)]);
   }
   if (value.enabled && (!info || !ppm)) throw new Error("\u542F\u7528\u6B63\u5F0F\u539F\u6587\u9884\u89C8\u9700\u8981\u914D\u7F6E pdfInfo \u548C pdfToPpm");
   return { enabled: value.enabled, pdfInfo: info, pdfToPpm: ppm, office: program(office, "office"), converters };
@@ -7553,9 +7565,28 @@ function readPlatform(raw, mode) {
   };
 }
 
+// src/desktop-config.ts
+import path2 from "node:path";
+var DESKTOP_CONFIG = "dsh-mcp-tbea-knowledge.json";
+function desktopConfigLocations(harnessHome, packageRoot) {
+  if (!harnessHome || !path2.isAbsolute(harnessHome)) {
+    throw new Error("\u65E0\u6CD5\u5B9A\u4F4D\u5320\u5B9D Harness \u76EE\u5F55\uFF0C\u8BF7\u68C0\u67E5 DSH_HOME \u6216\u6307\u5B9A Harness \u7684\u7EDD\u5BF9\u8DEF\u5F84");
+  }
+  return {
+    filename: path2.join(harnessHome, DESKTOP_CONFIG),
+    options: {
+      bundledPopplerBin: path2.join(packageRoot, "tools", "poppler", "Library", "bin"),
+      defaultDataDirectory: path2.join(harnessHome, "dsh-mcp-tbea-knowledge-data")
+    }
+  };
+}
+function commandHarnessHome(override) {
+  return override ?? process.env.DSH_HOME ?? (process.platform === "win32" && process.env.APPDATA ? path2.join(process.env.APPDATA, "dsh-desktop", "harness") : void 0);
+}
+
 // src/runtime.ts
 import { createHmac } from "node:crypto";
-var SERVICE_VERSION = "0.11.5";
+var SERVICE_VERSION = "0.11.6";
 var RUNTIME_PROTOCOL = "tbea-runtime/v1";
 function canonical(value) {
   if (Array.isArray(value)) return value.map(canonical);
@@ -7807,10 +7838,10 @@ function mergeDefs(...defs) {
 function cloneDef(schema) {
   return mergeDefs(schema._zod.def);
 }
-function getElementAtPath(obj, path3) {
-  if (!path3)
+function getElementAtPath(obj, path4) {
+  if (!path4)
     return obj;
-  return path3.reduce((acc, key) => acc?.[key], obj);
+  return path4.reduce((acc, key) => acc?.[key], obj);
 }
 function promiseAllObject(promisesObj) {
   const keys = Object.keys(promisesObj);
@@ -8150,11 +8181,11 @@ function explicitlyAborted(x, startIndex = 0) {
   }
   return false;
 }
-function prefixIssues(path3, issues) {
+function prefixIssues(path4, issues) {
   return issues.map((iss) => {
     var _a3;
     (_a3 = iss).path ?? (_a3.path = []);
-    iss.path.unshift(path3);
+    iss.path.unshift(path4);
     return iss;
   });
 }
@@ -8615,16 +8646,16 @@ function flattenError(error2, mapper = (issue2) => issue2.message) {
 }
 function formatError(error2, mapper = (issue2) => issue2.message) {
   const fieldErrors = { _errors: [] };
-  const processError = (error3, path3 = []) => {
+  const processError = (error3, path4 = []) => {
     for (const issue2 of error3.issues) {
       if (issue2.code === "invalid_union" && issue2.errors.length) {
-        issue2.errors.map((issues) => processError({ issues }, [...path3, ...issue2.path]));
+        issue2.errors.map((issues) => processError({ issues }, [...path4, ...issue2.path]));
       } else if (issue2.code === "invalid_key") {
-        processError({ issues: issue2.issues }, [...path3, ...issue2.path]);
+        processError({ issues: issue2.issues }, [...path4, ...issue2.path]);
       } else if (issue2.code === "invalid_element") {
-        processError({ issues: issue2.issues }, [...path3, ...issue2.path]);
+        processError({ issues: issue2.issues }, [...path4, ...issue2.path]);
       } else {
-        const fullpath = [...path3, ...issue2.path];
+        const fullpath = [...path4, ...issue2.path];
         if (fullpath.length === 0) {
           fieldErrors._errors.push(mapper(issue2));
         } else {
@@ -19172,9 +19203,11 @@ var StreamableHTTPClientTransport = class {
 };
 
 // scripts/doctor.mjs
-async function diagnose(filename) {
-  const config2 = await readConfig(filename);
+async function diagnose(filename, options) {
+  console.log(`Configuration: ${path3.resolve(filename)}`);
+  const config2 = await readConfig(filename, options);
   const base = `http://127.0.0.1:${config2.port}`;
+  if (config2.documentPreview?.enabled) console.log(`Poppler: ${config2.documentPreview.pdfInfo}; ${config2.documentPreview.pdfToPpm}`);
   console.log(`Node: ${process.version}; mode: ${config2.mode}; service: ${base}`);
   console.log(`DSH knowledge retrieval: ${config2.autoRetrieveKnowledge ? "on-demand" : "manual-only"}`);
   const health = await fetch(`${base}/health`, { signal: AbortSignal.timeout(5e3) });
@@ -19201,12 +19234,35 @@ async function diagnose(filename) {
     await client.close();
   }
 }
-if (path2.resolve(process.argv[1] || "") === fileURLToPath(import.meta.url)) {
-  const at = process.argv.indexOf("--config");
-  diagnose(at >= 0 ? process.argv[at + 1] : path2.resolve(path2.dirname(fileURLToPath(import.meta.url)), "../config/local.json")).catch((error2) => {
+if (path3.resolve(process.argv[1] || "") === fileURLToPath(import.meta.url)) {
+  try {
+    const { values } = parseArgs({ options: {
+      config: { type: "string" },
+      desktop: { type: "boolean" },
+      "harness-home": { type: "string" }
+    } });
+    if (values.desktop) {
+      if (values.config) throw new Error("--desktop \u4F7F\u7528 Harness \u6839\u76EE\u5F55\u914D\u7F6E\uFF0C\u4E0D\u80FD\u540C\u65F6\u4F20\u5165 --config");
+      const harnessHome = commandHarnessHome(values["harness-home"]);
+      if (!harnessHome || !path3.isAbsolute(harnessHome)) throw new Error("\u8BF7\u63D0\u4F9B Harness \u7684\u7EDD\u5BF9\u8DEF\u5F84");
+      const entry = path3.join(harnessHome, "profiles/desktop/node_modules/dsh-plugin-tbea-knowledge");
+      const packageRoot = await fs2.realpath(entry).catch((error2) => {
+        if (error2.code === "ENOENT") throw new Error(`\u672A\u627E\u5230\u5320\u5B9D desktop \u63D2\u4EF6\u5165\u53E3\uFF1A${entry}`, { cause: error2 });
+        throw error2;
+      });
+      const manifest = JSON.parse(await fs2.readFile(path3.join(packageRoot, "package.json"), "utf8"));
+      console.log(`Desktop plugin: ${manifest.version}; ${packageRoot}`);
+      const { filename, options } = desktopConfigLocations(harnessHome, packageRoot);
+      await diagnose(filename, options);
+    } else {
+      if (values["harness-home"]) throw new Error("--harness-home \u9700\u8981 --desktop");
+      const filename = values.config ?? path3.resolve(path3.dirname(fileURLToPath(import.meta.url)), "../config/local.json");
+      await diagnose(filename);
+    }
+  } catch (error2) {
     console.error(`Diagnostic failed: ${error2.message}`);
     process.exitCode = 1;
-  });
+  }
 }
 export {
   diagnose

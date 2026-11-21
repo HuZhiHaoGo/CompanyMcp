@@ -21,13 +21,12 @@
 
 仅在内网使用时，复制 `offline/dsh-mcp-tbea-knowledge-win-x64.zip` 或同名已解包目录。继续在内网开发时，复制完整源码项目和现有 `node_modules`。 [选择迁移方式](docs/使用与维护手册.md#选择迁移方式) · [安装与升级](docs/使用与维护手册.md#安装与升级)
 
-1. 初始化：`powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\Initialize.ps1`。
-2. 匠宝的 `desktop` Profile 使用内网部署提供的插件安装入口。普通 Harness Profile 可从对应终端运行 `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\Install-Plugin.ps1 -Profile web`，按实际名称填写 Profile。
-3. 关闭旧版手动服务窗口，从托盘完全退出并重新启动 DSH Desktop；服务随插件自动启动，后续普通重启无需再次安装。
-4. 在输入框输入 `/`，从菜单选择「公司知识库」。也可以输入 `/公司知识库` 后按回车，或通过 `+` 菜单选择。看到「公司知识库」标签后再提问，程序会先查相关的授权知识库，并按证据覆盖情况扩展搜索。
-5. 演示模式可打开 `http://127.0.0.1:17861/demo` 验证来源、表格和图片；演示资料不可用于设计。
-6. 修改 `config/local.json` 为正式配置后完全重启 DSH。 [服务管理与排错](docs/使用与维护手册.md#服务管理与排错)
-7. 从左侧打开「知识库目录」，选库和文档，滚动查看原文。演示可在服务启动后打开 `http://127.0.0.1:17861/demo?library`。
+1. 从解压目录运行 `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\Initialize.ps1 -Desktop -ConfigSource 'D:\配置\知识库.json'`，将示例路径换成管理员准备的 JSON。脚本将配置写入 `%APPDATA%\dsh-desktop\harness\dsh-mcp-tbea-knowledge.json`。
+2. 在匠宝 `desktop` 的「插件管理」中选择解压包内的 `plugin` 目录安装并启用。匠宝将插件代码和 Poppler 一起安装，配置保留在 `harness` 根目录。
+3. 关闭旧版手动服务，从托盘完全退出并重新打开匠宝。运行 `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\Doctor.ps1 -Desktop` 检查版本、配置和 MCP 握手。
+4. 在输入框通过 `/公司知识库` 选中知识库后提问。从左侧「知识库目录」打开文档，核对原文预览。
+
+普通 Harness Profile 可在对应终端执行 `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\Install-Plugin.ps1 -Profile web`。独立 MCP 继续使用 `config/local.json`。 [升级、配置和排错](docs/使用与维护手册.md#安装与升级)
 
 脚本仅为当前进程设置执行策略，不修改系统执行策略。若组织策略禁止脚本，请由管理员按内网规范执行。
 
@@ -73,7 +72,7 @@ npm run pack:offline   # 构建并刷新 Windows 离线运行目录及 ZIP
 | `plugin/src/cited-documents.ts`、`plugin/src/cited-documents-view.tsx` | 汇总会话引用和定位轮次 |
 | `plugin/src/library-browser.tsx` | 左栏对应的目录页、文档元数据和连续预览 |
 | `plugin/src/style.css` | 插件样式，全部限制在 `tbea-` 类名下 |
-| `config/local.json` | 单机管理员配置与凭证，初始化生成，不纳入版本管理 |
+| `harness/dsh-mcp-tbea-knowledge.json`、`config/local.json` | 匠宝 `desktop` 与独立 MCP 的本机配置，由管理员初始化 |
 | `data` | 资料快照及已查看图片的缓存，需随历史数据迁移 |
 | `docs/使用与维护手册.md` | 安装、配置、使用、排错、卸载及验收 |
 

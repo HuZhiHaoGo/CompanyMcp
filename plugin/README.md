@@ -6,7 +6,7 @@
 
 包含两个工具：`mcp__tbea__search_knowledge`、`mcp__tbea__get_chunk_detail`。Host 使用标准 MCP 客户端连接知识服务。`output.render` 输出文字证据，`output.presentationMeta` 存放快照标识、覆盖状态等展示字段。展示层通过 Connection 的同源鉴权接口获取图片。
 
-请先在整个项目根目录运行 `scripts/Initialize.ps1`，生成包含管理员配置绝对路径的 `cordis.patch.yml`，再从 DSH Terminal 安装本目录。移动项目后重新初始化和安装，或在当前 profile 中使用根目录生成的配置覆盖片段；不要直接覆盖整个 profile patch。
+匠宝管理员从离线包运行 `scripts/Initialize.ps1 -Desktop -ConfigSource <配置文件路径>` 后，在匠宝「插件管理」中安装离线包内的 `plugin` 目录。插件按 `DSH_HOME` 读取根目录中的 `dsh-mcp-tbea-knowledge.json`，并从自己的安装目录读取 Poppler。普通 Harness Profile 与旧版的显式 `configFile` 部署继续使用原有初始化方式。
 
 具体安装、正式配置、故障排查和卸载见 [使用与维护手册](../docs/使用与维护手册.md)。
 
