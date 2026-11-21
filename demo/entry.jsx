@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { Plus, Moon, Sun } from 'lucide-react';
 import { Sources, KnowledgeSelection } from '../plugin/src/client.jsx';
-import { LibraryBrowser } from '../plugin/src/library-browser.jsx';
+import { LibraryBrowser } from '../plugin/src/library-browser.tsx';
 import { createSelectionClient, registerKnowledgeEntries } from '../plugin/src/composer.mjs';
 import styles from '../plugin/src/style.css';
 import demoStyles from './style.css';

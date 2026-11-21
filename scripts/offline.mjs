@@ -1,6 +1,8 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import { execFile } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { promisify } from 'node:util';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const output = path.join(root, 'offline', 'dsh-mcp-tbea-knowledge');
@@ -22,4 +24,32 @@ await fs.mkdir(path.join(output, 'runtime'), { recursive: true });
 await fs.copyFile(process.execPath, path.join(output, 'runtime/node.exe'));
 await fs.copyFile(path.join(path.dirname(process.execPath), 'LICENSE'), path.join(output, 'runtime/LICENSE'));
 await fs.cp(poppler, path.join(output, 'tools', 'poppler'), { recursive: true });
+
+const rootName = path.basename(output);
+const releaseDir = path.dirname(output);
+const archive = path.join(releaseDir, rootName + '-win-x64.zip');
+const temporary = path.join(releaseDir, '.' + rootName + '-' + process.pid + '.zip');
+const tar = path.join(process.env.SystemRoot || 'C:/Windows', 'System32', 'tar.exe');
+const run = promisify(execFile);
+try {
+  await run(tar, ['-a', '-cf', temporary, '-C', releaseDir, rootName], { windowsHide: true });
+  const { stdout } = await run(tar, ['-tf', temporary], { windowsHide: true });
+  const entries = new Set(stdout.trim().split(/\r?\n/));
+  for (const name of [
+    'config/example.json', 'dist/server.mjs', 'plugin/package.json', 'plugin/lib/index.js', 'plugin/lib/client.js',
+    'runtime/node.exe', 'tools/poppler/Library/bin/pdfinfo.exe', 'tools/poppler/Library/bin/pdftoppm.exe',
+  ]) {
+    if (!entries.has(rootName + '/' + name)) throw new Error('Offline archive is missing ' + name);
+  }
+  for (const entry of entries) {
+    const relative = entry.slice(rootName.length + 1);
+    if (!entry.startsWith(rootName + '/') || /^(?:data(?:\/|$)|config\/(?:local\.json|generated-profile\.patch\.yml)$|plugin\/cordis\.patch\.yml$)/i.test(relative)) {
+      throw new Error('Unexpected offline archive entry: ' + entry);
+    }
+  }
+  await fs.rename(temporary, archive);
+} finally {
+  await fs.rm(temporary, { force: true });
+}
 console.log(`Offline runtime prepared: ${output}\nNo credentials or data were included. Run Initialize.ps1 after moving it.`);
+console.log('Offline ZIP prepared: ' + archive);

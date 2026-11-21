@@ -6,7 +6,7 @@ import { fromMarkdown } from 'mdast-util-from-markdown';
 import { gfm } from 'micromark-extension-gfm';
 import { gfmFromMarkdown } from 'mdast-util-gfm';
 import { isRecord } from './contracts.ts';
-import type { Citation, CitationImage, JsonRecord, KnowledgeBase, Snapshot, TableCell } from './contracts.ts';
+import type { Citation, CitationImage, JsonRecord, KnowledgeBase, PublicCitation, PublicSnapshot, Snapshot, TableCell } from './contracts.ts';
 import { checkEvidence, evidenceScore } from './evidence.ts';
 
 type HtmlNode = DefaultTreeAdapterTypes.Node;
@@ -114,8 +114,8 @@ export function normalizeCitation(raw: JsonRecord, index: number, snapshotId: st
     modelText: [content.trim(), tableText].filter(Boolean).join('\n\n'), source: raw };
 }
 
-export function publicSnapshot(snapshot: Snapshot, allowed?: ReadonlySet<string>) {
-  const publicCitation = ({ source, modelText, equivalentSources, ...c }: Citation) => ({ ...c, images: c.images.map(({ url, ...image }) => image) });
+export function publicSnapshot(snapshot: Snapshot, allowed?: ReadonlySet<string>): PublicSnapshot {
+  const publicCitation = ({ source, modelText, equivalentSources, ...c }: Citation): PublicCitation => ({ ...c, images: c.images.map(({ url, ...image }) => image) });
   return { ...snapshot, citations: snapshot.citations.map(citation => ({
     ...publicCitation(citation),
     equivalentSources: (citation.equivalentSources || []).filter(c => !allowed || allowed.has(c.knowledgeBaseId)).map(publicCitation),

@@ -8,6 +8,8 @@
 
 左侧「知识库目录」可浏览授权库的文档、按名称筛选、查看基本信息和连续滚动原文。Windows x64 离线包附带 Poppler，启用原文预览即可预览 PDF。Word、PPT 等格式需要配置相应转换组件。 [配置和验收步骤](docs/使用与维护手册.md#知识库目录与原文预览)
 
+会话顶部的「引用文档」汇总当前会话各轮的公司知识库文档。点击文档名打开原文，点击「查看引用」返回对应轮次。每轮的「参考来源」可展开切片、表格和图片。 [会话引用使用方法](docs/使用与维护手册.md#会话引用文档)
+
 ## 先看这里
 
 - 本机无法访问公司内网。本项目提供合成演示模式和离线包；真实平台、内网模型及完整 DSH Desktop 联调必须在内网进行。
@@ -35,13 +37,14 @@
 
 ```powershell
 npm ci                 # 仅在有网络或完整 npm 缓存时安装，离线运行包不需要
-npm run typecheck      # 严格检查服务端 TypeScript
+npm run typecheck      # 严格检查服务端和已迁移的插件 TypeScript
 npm run build          # 类型检查后构建 MCP、诊断工具及 DSH 插件
 npm test               # 单元与真实 MCP 协议集成测试
 npm run init           # 初始化配置，不覆盖已有配置
 npm start              # 启动服务
 npm run doctor         # 检查配置、健康接口及 MCP 握手；正式模式不自动发起检索
-npm run pack:offline   # 生成不含凭证和聊天数据的 Windows 离线运行目录
+npm run test:citations-ui # 用模拟会话验证原文预览和轮次跳转
+npm run pack:offline   # 构建并刷新 Windows 离线运行目录及 ZIP
 ```
 
 ## 目录与修改位置
@@ -63,11 +66,12 @@ npm run pack:offline   # 生成不含凭证和聊天数据的 Windows 离线运�
 | `plugin/src/service-manager.mjs` | 自动启动、端口身份核对、共享实例及退出清理 |
 | `src/runtime.ts` | 运行版本与鉴权后的配置身份 |
 | `src/shared-tasks.ts` | 图片/切片任务去重与多窗口取消隔离 |
-| `tsconfig.json` | 服务端 TypeScript 检查配置 |
+| `tsconfig.json` | 服务端和插件 TypeScript 检查配置 |
 | `plugin/src/selection.mjs` | 会话来源开关持久化、模型调用前强制检索 |
 | `plugin/src/composer.mjs` | `+` 菜单和 `/` 命令入口、来源界面状态、历史引用节点 |
 | `plugin/src/client.jsx` | 来源、表格、图片及详情交互 |
-| `plugin/src/library-browser.jsx` | 左栏对应的目录页、文档元数据和连续预览 |
+| `plugin/src/cited-documents.ts`、`plugin/src/cited-documents-view.tsx` | 汇总会话引用和定位轮次 |
+| `plugin/src/library-browser.tsx` | 左栏对应的目录页、文档元数据和连续预览 |
 | `plugin/src/style.css` | 插件样式，全部限制在 `tbea-` 类名下 |
 | `config/local.json` | 单机管理员配置与凭证，初始化生成，不纳入版本管理 |
 | `data` | 资料快照及已查看图片的缓存，需随历史数据迁移 |

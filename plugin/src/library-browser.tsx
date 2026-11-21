@@ -1,11 +1,58 @@
 import React, { useEffect, useRef, useState } from 'react';
+import type { ReactNode, RefObject } from 'react';
 import { ArrowLeft, BookOpen, FileText, LoaderCircle, RotateCcw, Search } from 'lucide-react';
+import type { LibraryBrowser as LibraryService } from '../../src/library-browser.ts';
+import type { documentRecord } from '../../src/documents.ts';
+import type { previewStatus } from '../../src/document-renderer.ts';
+
+type LibraryRequests = {
+  'library-catalog': {
+    args: Record<string, never>;
+    result: Awaited<ReturnType<LibraryService['catalog']>>;
+  };
+  'library-documents': {
+    args: { libraryId: string };
+    result: Awaited<ReturnType<LibraryService['documents']>>;
+  };
+  'library-open': {
+    args: { libraryId: string; documentId: string };
+    result: Awaited<ReturnType<LibraryService['open']>>;
+  };
+  'library-page': {
+    args: { previewId: string; page: number };
+    result: { bytes: Uint8Array<ArrayBuffer> };
+  };
+};
+
+type LibraryAction = keyof LibraryRequests;
+export type LibraryBridge = <T extends LibraryAction>(
+  action: T, args: LibraryRequests[T]['args'], signal: AbortSignal,
+) => Promise<LibraryRequests[T]['result']>;
+
+type Library = LibraryRequests['library-catalog']['result']['libraries'][number];
+type ListedDocument = LibraryRequests['library-documents']['result']['documents'][number];
+type Preview = LibraryRequests['library-open']['result'];
+type DocumentMetadata = NonNullable<ReturnType<typeof documentRecord>['info']>;
+type ReaderDocument = Pick<DocumentMetadata, 'id' | 'name'> & Partial<DocumentMetadata> & { preview?: ReturnType<typeof previewStatus> };
 
 const states = { disabled: '原文预览未启用', 'converter-required': '待配置转换组件', unsupported: '当前格式暂不支持预览' };
-const statusLabels = { available: '可用', enabled: '可用', queuing: '排队中', parsing: '解析中', indexing: '处理中', parseError: '解析失败', error: '处理失败', paused: '已暂停' };
+const statusLabels: Readonly<Record<string, string>> = { available: '可用', enabled: '可用', queuing: '排队中', parsing: '解析中', indexing: '处理中', parseError: '解析失败', error: '处理失败', paused: '已暂停' };
 
-function useLibraryRequest(bridge, action, args, key) {
-  const [state, setState] = useState({});
+interface RequestState<T> {
+  key: string;
+  revision: number;
+  loading?: boolean;
+  error?: string;
+  value?: T;
+}
+
+function errorMessage(error: unknown) {
+  return error instanceof Error ? error.message : '知识库请求失败，请重试。';
+}
+
+function useLibraryRequest<T extends LibraryAction>(bridge: LibraryBridge, action: T, args: LibraryRequests[T]['args'], key?: string):
+  Omit<RequestState<LibraryRequests[T]['result']>, 'key' | 'revision'> & { retry: () => void } {
+  const [state, setState] = useState<RequestState<LibraryRequests[T]['result']>>();
   const [revision, setRevision] = useState(0);
   useEffect(() => {
     if (key === undefined) return;
@@ -14,22 +61,22 @@ function useLibraryRequest(bridge, action, args, key) {
     bridge(action, args, controller.signal).then(value => {
       if (!controller.signal.aborted) setState({ key, revision, value });
     }, error => {
-      if (!controller.signal.aborted) setState({ key, revision, error: error.message });
+      if (!controller.signal.aborted) setState({ key, revision, error: errorMessage(error) });
     });
     return () => controller.abort();
   }, [bridge, action, key, revision]);
-  return { ...(state.key === key && state.revision === revision ? state : { loading: key !== undefined }), retry: () => setRevision(value => value + 1) };
+  return { ...(state?.key === key && state?.revision === revision ? state : { loading: key !== undefined }), retry: () => setRevision(value => value + 1) };
 }
 
-function Wait({ children }) {
+function Wait({ children }: { children: ReactNode }) {
   return <div className="tbea-library-state" role="status"><LoaderCircle size={16} className="tbea-spin" />{children}</div>;
 }
 
-function Failure({ children, retry }) {
+function Failure({ children, retry }: { children: ReactNode; retry: () => void }) {
   return <div className="tbea-library-state tbea-library-error" role="alert"><span>{children}</span><button type="button" className="tbea-library-button" onClick={retry}><RotateCcw size={14} />重试</button></div>;
 }
 
-export function LibraryBrowser({ bridge }) {
+export function LibraryBrowser({ bridge }: { bridge: LibraryBridge }) {
   const directory = useLibraryRequest(bridge, 'library-catalog', {}, 'catalog');
   const libraries = directory.value?.libraries ?? [];
   const [selection, setSelection] = useState('');
@@ -42,9 +89,11 @@ export function LibraryBrowser({ bridge }) {
   </section>;
 }
 
-function LibraryContents({ library, libraries, select, bridge }) {
+function LibraryContents({ library, libraries, select, bridge }: {
+  library: Library; libraries: Library[]; select: (id: string) => void; bridge: LibraryBridge;
+}) {
   const [filter, setFilter] = useState('');
-  const [selected, setSelected] = useState();
+  const [selected, setSelected] = useState<ListedDocument>();
   const listing = useLibraryRequest(bridge, 'library-documents', { libraryId: library.id }, library.id);
   const documents = listing.value?.documents ?? [];
   const visible = documents.filter(item => item.name.toLowerCase().includes(filter.trim().toLowerCase()));
@@ -64,7 +113,7 @@ function LibraryContents({ library, libraries, select, bridge }) {
       {listing.value && !visible.length && <div className="tbea-library-state">{filter.trim() ? '没有找到匹配的文档。' : '当前没有可显示的文档。'}</div>}
       <ul className="tbea-library-items">
         {visible.map(item => <li key={item.id}><button type="button" aria-current={selected?.id === item.id ? 'true' : undefined} title={item.name} onClick={() => setSelected(item)}>
-          <FileText size={16} aria-hidden="true" /><span><strong>{item.name}</strong><small>{[item.format?.toUpperCase() || '未知格式', states[item.preview]].filter(Boolean).join(' · ')}</small></span>
+          <FileText size={16} aria-hidden="true" /><span><strong>{item.name}</strong><small>{[item.format?.toUpperCase() || '未知格式', item.preview !== 'available' ? states[item.preview] : undefined].filter(Boolean).join(' · ')}</small></span>
         </button></li>)}
       </ul>
     </aside>
@@ -73,53 +122,59 @@ function LibraryContents({ library, libraries, select, bridge }) {
   </div>;
 }
 
-function formatSize(bytes) {
+function formatSize(bytes: number) {
   if (bytes < 1024) return `${bytes} B`;
   return bytes < 1024 * 1024 ? `${(bytes / 1024).toFixed(1)} KB` : `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-function DocumentReader({ bridge, libraryId, documentInfo, close }) {
+export function DocumentReader({ bridge, libraryId, documentInfo, close, requestPreview, backLabel = '返回文档目录' }: {
+  bridge: LibraryBridge; libraryId: string; documentInfo: ReaderDocument;
+  close: () => void; requestPreview?: boolean; backLabel?: string;
+}) {
   const { id, name, format, status, createdAt, bytes, preview } = documentInfo;
-  const state = useLibraryRequest(bridge, 'library-open', { libraryId, documentId: id }, preview === 'available' ? id : undefined);
-  const facts = [format?.toUpperCase(), bytes != null ? formatSize(bytes) : undefined, createdAt ? new Date(createdAt).toLocaleDateString('zh-CN') : undefined, statusLabels[status] ?? status].filter(Boolean);
+  const canOpen = requestPreview ?? (preview === 'available');
+  const state = useLibraryRequest(bridge, 'library-open', { libraryId, documentId: id }, canOpen ? JSON.stringify([libraryId, id]) : undefined);
+  const facts = [format?.toUpperCase(), bytes != null ? formatSize(bytes) : undefined, createdAt ? new Date(createdAt).toLocaleDateString('zh-CN') : undefined, status ? statusLabels[status] ?? status : undefined].filter(Boolean);
   return <article className="tbea-library-reader" aria-label="原文预览">
-    <div className="tbea-library-reader-heading"><button type="button" className="tbea-library-button" aria-label="返回文档目录" onClick={close}><ArrowLeft size={16} /></button><div><h2>{name}</h2>{facts.length > 0 && <p>{facts.join(' · ')}</p>}</div>{state.value && <span className="tbea-library-page-count">{state.value.pages} 页</span>}</div>
+    <div className="tbea-library-reader-heading"><button type="button" className="tbea-library-button" aria-label={backLabel} onClick={close}><ArrowLeft size={16} /></button><div><h2>{name}</h2>{facts.length > 0 && <p>{facts.join(' · ')}</p>}</div>{state.value && <span className="tbea-library-page-count">{state.value.pages} 页</span>}</div>
     {state.loading && <Wait>正在准备原文预览…</Wait>}
     {state.error && <Failure retry={state.retry}>{state.error}</Failure>}
-    {states[preview] && <div className="tbea-library-state">{states[preview]}。</div>}
+    {preview && preview !== 'available' && <div className="tbea-library-state">{states[preview]}。</div>}
     {state.value && <PreviewPages key={state.value.previewId} bridge={bridge} {...state.value} restart={state.retry} />}
   </article>;
 }
 
-function PreviewPages({ bridge, previewId, pages, restart }) {
-  const root = useRef();
+function PreviewPages({ bridge, previewId, pages, restart }: Preview & { bridge: LibraryBridge; restart: () => void }) {
+  const root = useRef<HTMLDivElement>(null);
   return <div className="tbea-library-pages" ref={root} tabIndex={0} aria-label="原文页面，滚动连续阅读">
     {Array.from({ length: pages }, (_, i) => <PreviewPage key={i} root={root} bridge={bridge} previewId={previewId} page={i + 1} restart={restart} />)}
   </div>;
 }
 
-function PreviewPage({ root, bridge, previewId, page, restart }) {
-  const element = useRef();
+function PreviewPage({ root, bridge, previewId, page, restart }: {
+  root: RefObject<HTMLDivElement>; bridge: LibraryBridge; previewId: string; page: number; restart: () => void;
+}) {
+  const element = useRef<HTMLElement>(null);
   const [near, setNear] = useState(page === 1);
-  const [ratio, setRatio] = useState();
+  const [ratio, setRatio] = useState<string>();
   const [error, setError] = useState('');
   const [url, setUrl] = useState('');
   const [revision, setRevision] = useState(0);
   useEffect(() => {
     const observer = new IntersectionObserver(([entry]) => setNear(entry.isIntersecting), { root: root.current, rootMargin: '650px 0px' });
-    observer.observe(element.current);
+    if (element.current) observer.observe(element.current);
     return () => observer.disconnect();
   }, [root]);
   useEffect(() => {
     if (!near || error) return;
     const controller = new AbortController();
-    let objectUrl;
+    let objectUrl: string | undefined;
     bridge('library-page', { previewId, page }, controller.signal).then(asset => {
       if (controller.signal.aborted) return;
       objectUrl = URL.createObjectURL(new Blob([asset.bytes], { type: 'image/png' }));
       setUrl(objectUrl);
     }, failure => {
-      if (!controller.signal.aborted) setError(failure.message);
+      if (!controller.signal.aborted) setError(errorMessage(failure));
     });
     return () => { controller.abort(); if (objectUrl) URL.revokeObjectURL(objectUrl); setUrl(''); };
   }, [near, previewId, page, bridge, revision, error]);

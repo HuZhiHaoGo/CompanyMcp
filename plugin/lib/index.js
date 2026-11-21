@@ -53393,7 +53393,7 @@ var KnowledgeService = class {
 
 // src/runtime.ts
 import { createHmac } from "node:crypto";
-var SERVICE_VERSION = "0.11.2";
+var SERVICE_VERSION = "0.11.3";
 var RUNTIME_PROTOCOL = "tbea-runtime/v1";
 function canonical(value) {
   if (Array.isArray(value)) return value.map(canonical);

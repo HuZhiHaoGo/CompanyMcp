@@ -121,6 +121,14 @@ export interface Snapshot {
   citations: Citation[];
 }
 
+export type PublicCitation = Omit<Citation, 'source' | 'modelText' | 'images' | 'equivalentSources'> & {
+  images: Omit<CitationImage, 'url'>[];
+};
+
+export type PublicSnapshot = Omit<Snapshot, 'citations'> & {
+  citations: (PublicCitation & { equivalentSources: PublicCitation[] })[];
+};
+
 export type ImageType = 'image/png' | 'image/jpeg' | 'image/webp' | 'image/gif';
 export interface ImageData {
   type: ImageType;

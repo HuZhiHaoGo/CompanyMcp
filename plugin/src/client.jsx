@@ -2,10 +2,11 @@ import React, { useEffect, useRef, useState, useSyncExternalStore, useCallback, 
 import { BookOpen, ChevronDown, ChevronRight, Check, Copy, FileText, Image as ImageIcon, LoaderCircle, RefreshCw, X, ZoomIn, ZoomOut, RotateCcw, Download } from 'lucide-react';
 import styles from './style.css';
 import { createSelectionClient, registerKnowledgeEntries, prefetchDefinition } from './composer.mjs';
-import { LibraryBrowser } from './library-browser.jsx';
+import { LibraryBrowser } from './library-browser.tsx';
+import { CitedDocumentsView } from './cited-documents-view.tsx';
 import { displayPath } from './display-transport.mjs';
 
-export const inject = ['slots', 'commandUi', 'uiConversation'];
+export const inject = ['slots', 'commandUi', 'uiConversation', 'sessions'];
 
 /** 通过 Connection 的同源鉴权路由读取展示数据。 */
 export function apply(ctx) {
@@ -49,6 +50,10 @@ export function apply(ctx) {
   ctx.slots.inject('conversation.chat.node', () => ctx.slots.register({ name: 'conversation.chat.node', key: 'tbea-knowledge-prefetch',
     inject: () => ({ bridge }),
   }, PrefetchedKnowledge));
+  ctx.slots.inject('conversation.view', () => ctx.slots.register({ name: 'conversation.view', id: 'tbea-cited-documents', order: 50,
+    label: () => '引用文档',
+    inject: sessionId => ({ bridge, binding: ctx.sessions.binding(sessionId) }),
+  }, CitedDocumentsView));
 }
 
 function LibraryPanelIcon({ size = 16, className }) { return <BookOpen size={size} className={className} aria-hidden="true" />; }

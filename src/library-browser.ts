@@ -78,7 +78,7 @@ export class LibraryBrowser {
     signal = this.operation(signal, 60000);
     const library = await this.authorize(id, signal);
     if (this.mock) {
-      const documents = this.demoDocuments().map(info => ({ ...info, preview: 'available' }));
+      const documents = this.demoDocuments().map(info => ({ ...info, preview: 'available' as const }));
       return { documents, total: documents.length, complete: true };
     }
     const result = await this.listing.run(library, signal, shared => this.gate.run(shared,
