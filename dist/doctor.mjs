@@ -3258,8 +3258,8 @@ var require_utils = __commonJS({
       }
       return ind;
     }
-    function removeDotSegments(path4) {
-      let input = path4;
+    function removeDotSegments(path5) {
+      let input = path5;
       const output = [];
       let nextSlash = -1;
       let len = 0;
@@ -3333,11 +3333,11 @@ var require_utils = __commonJS({
       }
       return output.join("");
     }
-    function removeDotSegmentsRelative(path4) {
-      if (path4 === "" || path4[0] === "/") {
-        return removeDotSegments(path4);
+    function removeDotSegmentsRelative(path5) {
+      if (path5 === "" || path5[0] === "/") {
+        return removeDotSegments(path5);
       }
-      const segments = path4.split("/");
+      const segments = path5.split("/");
       const last = segments.length - 1;
       const output = [];
       let trailingDirectory = false;
@@ -3700,8 +3700,8 @@ var require_schemes = __commonJS({
       }
       if (wsComponent.resourceName) {
         const queryIndex = wsComponent.resourceName.indexOf("?");
-        const path4 = queryIndex === -1 ? wsComponent.resourceName : wsComponent.resourceName.slice(0, queryIndex);
-        wsComponent.path = path4 && path4 !== "/" ? path4 : void 0;
+        const path5 = queryIndex === -1 ? wsComponent.resourceName : wsComponent.resourceName.slice(0, queryIndex);
+        wsComponent.path = path5 && path5 !== "/" ? path5 : void 0;
         wsComponent.query = queryIndex === -1 ? void 0 : wsComponent.resourceName.slice(queryIndex + 1);
         wsComponent.resourceName = void 0;
       }
@@ -7356,7 +7356,7 @@ var require_content_type = __commonJS({
 });
 
 // scripts/doctor.mjs
-import path3 from "node:path";
+import path4 from "node:path";
 import fs2 from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
@@ -7368,6 +7368,9 @@ import path from "node:path";
 // src/contracts.ts
 function isRecord(value) {
   return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+function previewEnabled(settings) {
+  return settings?.enabled === true && settings.allowPdfViewer !== false;
 }
 
 // src/config.ts
@@ -7448,6 +7451,7 @@ async function validateConfig(config2, filename, options = {}) {
     knowledgeBases,
     dataDirectory,
     limits,
+    diagnosticsDirectory: options.defaultDiagnosticsDirectory ?? path.join(dataDirectory, "logs"),
     retrieval: {
       ...retrieval,
       evidenceScoreThreshold: evidenceThreshold,
@@ -7491,7 +7495,7 @@ function readSynonyms(value) {
     return { term: item.term.trim(), aliases: words(item.aliases), context: words(item.context) };
   });
 }
-async function readDocumentPreview(value, directory, { bundledPopplerBin, bundledOffice }) {
+async function readDocumentPreview(value, directory, { bundledOffice }) {
   if (value === void 0) return void 0;
   if (!isRecord(value) || typeof value.enabled !== "boolean") throw new Error("documentPreview.enabled \u5FC5\u987B\u4E3A true \u6216 false");
   const { allowPdfViewer } = value;
@@ -7501,43 +7505,26 @@ async function readDocumentPreview(value, directory, { bundledPopplerBin, bundle
     if (typeof input !== "string" || !input.trim()) throw new Error(`documentPreview.${key} \u5FC5\u987B\u4E3A\u7A0B\u5E8F\u8DEF\u5F84`);
     return path.resolve(directory, input);
   }
-  const { pdfInfo, pdfToPpm, office } = value;
+  const { office } = value;
   const converters = {};
   if (value.converters !== void 0 && !isRecord(value.converters)) throw new Error("documentPreview.converters \u5FC5\u987B\u4E3A\u5BF9\u8C61");
   for (const [format, input] of Object.entries(value.converters ?? {})) {
     if (!/^[a-z0-9]{2,8}$/.test(format)) throw new Error("\u8F6C\u6362\u7EC4\u4EF6\u952E\u5FC5\u987B\u4E3A\u5C0F\u5199\u6587\u4EF6\u6269\u5C55\u540D\uFF0C\u4F8B\u5982 ofd");
     converters[format] = program(input, `converters.${format}`);
   }
-  let info = program(pdfInfo, "pdfInfo");
-  let ppm = program(pdfToPpm, "pdfToPpm");
   let officeProgram = program(office, "office");
   let officeBundled;
-  if (value.enabled && process.platform === "win32") {
-    const legacyBin = path.resolve(directory, "../tools/poppler/Library/bin");
-    const offlineBin = path.resolve(directory, "../plugin/tools/poppler/Library/bin");
-    async function bundledProgram(name, configured, original) {
-      const legacyDefault = !bundledPopplerBin && typeof original === "string" && !path.isAbsolute(original) && configured === path.join(legacyBin, name);
-      if (configured && !legacyDefault) return configured;
-      for (const bin of bundledPopplerBin ? [bundledPopplerBin] : [legacyBin, offlineBin]) {
-        const filename = path.join(bin, name);
-        if ((await fs.stat(filename).catch(() => void 0))?.isFile()) return filename;
-      }
-      return configured;
-    }
-    [info, ppm] = await Promise.all([bundledProgram("pdfinfo.exe", info, pdfInfo), bundledProgram("pdftoppm.exe", ppm, pdfToPpm)]);
-    if (!officeProgram) {
-      const relative = "tools/libreoffice/program/soffice.com";
-      for (const candidate of bundledOffice ? [bundledOffice] : [path.resolve(directory, "../plugin", relative), path.resolve(directory, "..", relative)]) {
-        if ((await fs.stat(candidate).catch(() => void 0))?.isFile()) {
-          officeProgram = candidate;
-          officeBundled = true;
-          break;
-        }
+  if (value.enabled && allowPdfViewer !== false && !officeProgram && process.platform === "win32") {
+    const relative = "tools/libreoffice/program/soffice.com";
+    for (const candidate of bundledOffice ? [bundledOffice] : [path.resolve(directory, "../plugin", relative), path.resolve(directory, "..", relative)]) {
+      if ((await fs.stat(candidate).catch(() => void 0))?.isFile()) {
+        officeProgram = candidate;
+        officeBundled = true;
+        break;
       }
     }
   }
-  if (value.enabled && (!info || !ppm)) throw new Error("\u542F\u7528\u6B63\u5F0F\u539F\u6587\u9884\u89C8\u9700\u8981\u914D\u7F6E pdfInfo \u548C pdfToPpm");
-  return { enabled: value.enabled, allowPdfViewer, pdfInfo: info, pdfToPpm: ppm, office: officeProgram, officeBundled, converters };
+  return { enabled: value.enabled, allowPdfViewer: allowPdfViewer ?? true, office: officeProgram, officeBundled, converters };
 }
 function readPlatform(raw, mode) {
   function routeFor(key, fallback) {
@@ -7589,9 +7576,9 @@ function desktopConfigLocations(harnessHome, packageRoot) {
   return {
     filename: path2.join(harnessHome, DESKTOP_CONFIG),
     options: {
-      bundledPopplerBin: path2.join(packageRoot, "tools", "poppler", "Library", "bin"),
       bundledOffice: path2.join(packageRoot, "tools", "libreoffice", "program", "soffice.com"),
-      defaultDataDirectory: path2.join(harnessHome, "dsh-mcp-tbea-knowledge-data")
+      defaultDataDirectory: path2.join(harnessHome, "dsh-mcp-tbea-knowledge-data"),
+      defaultDiagnosticsDirectory: path2.join(harnessHome, "logs")
     }
   };
 }
@@ -7599,9 +7586,16 @@ function commandHarnessHome(override) {
   return override ?? process.env.DSH_HOME ?? (process.platform === "win32" && process.env.APPDATA ? path2.join(process.env.APPDATA, "dsh-desktop", "harness") : void 0);
 }
 
+// src/diagnostics.ts
+import path3 from "node:path";
+var maxLogBytes = 10 * 1024 * 1024;
+function diagnosticFilename(config2) {
+  return path3.join(config2.diagnosticsDirectory ?? path3.join(config2.dataDirectory, "logs"), "dsh-mcp-tbea-knowledge.jsonl");
+}
+
 // src/runtime.ts
 import { createHmac } from "node:crypto";
-var SERVICE_VERSION = "0.11.10";
+var SERVICE_VERSION = "0.11.11";
 var RUNTIME_PROTOCOL = "tbea-runtime/v1";
 function canonical(value) {
   if (Array.isArray(value)) return value.map(canonical);
@@ -7612,6 +7606,7 @@ function configIdentity(config2) {
   const value = { ...config2 };
   delete value.service;
   delete value.autoRetrieveKnowledge;
+  delete value.diagnosticsDirectory;
   if (!config2.documentPreview?.enabled) delete value.documentPreview;
   return createHmac("sha256", config2.serviceToken).update(JSON.stringify(canonical(value))).digest("hex");
 }
@@ -7853,10 +7848,10 @@ function mergeDefs(...defs) {
 function cloneDef(schema) {
   return mergeDefs(schema._zod.def);
 }
-function getElementAtPath(obj, path4) {
-  if (!path4)
+function getElementAtPath(obj, path5) {
+  if (!path5)
     return obj;
-  return path4.reduce((acc, key) => acc?.[key], obj);
+  return path5.reduce((acc, key) => acc?.[key], obj);
 }
 function promiseAllObject(promisesObj) {
   const keys = Object.keys(promisesObj);
@@ -8196,11 +8191,11 @@ function explicitlyAborted(x, startIndex = 0) {
   }
   return false;
 }
-function prefixIssues(path4, issues) {
+function prefixIssues(path5, issues) {
   return issues.map((iss) => {
     var _a3;
     (_a3 = iss).path ?? (_a3.path = []);
-    iss.path.unshift(path4);
+    iss.path.unshift(path5);
     return iss;
   });
 }
@@ -8661,16 +8656,16 @@ function flattenError(error2, mapper = (issue2) => issue2.message) {
 }
 function formatError(error2, mapper = (issue2) => issue2.message) {
   const fieldErrors = { _errors: [] };
-  const processError = (error3, path4 = []) => {
+  const processError = (error3, path5 = []) => {
     for (const issue2 of error3.issues) {
       if (issue2.code === "invalid_union" && issue2.errors.length) {
-        issue2.errors.map((issues) => processError({ issues }, [...path4, ...issue2.path]));
+        issue2.errors.map((issues) => processError({ issues }, [...path5, ...issue2.path]));
       } else if (issue2.code === "invalid_key") {
-        processError({ issues: issue2.issues }, [...path4, ...issue2.path]);
+        processError({ issues: issue2.issues }, [...path5, ...issue2.path]);
       } else if (issue2.code === "invalid_element") {
-        processError({ issues: issue2.issues }, [...path4, ...issue2.path]);
+        processError({ issues: issue2.issues }, [...path5, ...issue2.path]);
       } else {
-        const fullpath = [...path4, ...issue2.path];
+        const fullpath = [...path5, ...issue2.path];
         if (fullpath.length === 0) {
           fieldErrors._errors.push(mapper(issue2));
         } else {
@@ -19219,13 +19214,14 @@ var StreamableHTTPClientTransport = class {
 
 // scripts/doctor.mjs
 async function diagnose(filename, options) {
-  console.log(`Configuration: ${path3.resolve(filename)}`);
+  console.log(`Configuration: ${path4.resolve(filename)}`);
   const config2 = await readConfig(filename, options);
   const base = `http://127.0.0.1:${config2.port}`;
-  if (config2.documentPreview?.enabled) {
-    console.log(`Poppler: ${config2.documentPreview.pdfInfo}; ${config2.documentPreview.pdfToPpm}`);
-    console.log(`LibreOffice: ${config2.documentPreview.office ?? "not configured"}`);
+  if (previewEnabled(config2.documentPreview)) {
+    console.log("PDF.js: enabled");
+    console.log(`LibreOffice: ${config2.documentPreview?.office ?? "not configured"}`);
   }
+  console.log(`Knowledge diagnostics: ${diagnosticFilename(config2)}`);
   console.log(`Node: ${process.version}; mode: ${config2.mode}; service: ${base}`);
   console.log(`DSH knowledge retrieval: ${config2.autoRetrieveKnowledge ? "on-demand" : "manual-only"}`);
   const health = await fetch(`${base}/health`, { signal: AbortSignal.timeout(5e3) });
@@ -19252,7 +19248,7 @@ async function diagnose(filename, options) {
     await client.close();
   }
 }
-if (path3.resolve(process.argv[1] || "") === fileURLToPath(import.meta.url)) {
+if (path4.resolve(process.argv[1] || "") === fileURLToPath(import.meta.url)) {
   try {
     const { values } = parseArgs({ options: {
       config: { type: "string" },
@@ -19262,19 +19258,19 @@ if (path3.resolve(process.argv[1] || "") === fileURLToPath(import.meta.url)) {
     if (values.desktop) {
       if (values.config) throw new Error("--desktop \u4F7F\u7528 Harness \u6839\u76EE\u5F55\u914D\u7F6E\uFF0C\u4E0D\u80FD\u540C\u65F6\u4F20\u5165 --config");
       const harnessHome = commandHarnessHome(values["harness-home"]);
-      if (!harnessHome || !path3.isAbsolute(harnessHome)) throw new Error("\u8BF7\u63D0\u4F9B Harness \u7684\u7EDD\u5BF9\u8DEF\u5F84");
-      const entry = path3.join(harnessHome, "profiles/desktop/node_modules/dsh-plugin-tbea-knowledge");
+      if (!harnessHome || !path4.isAbsolute(harnessHome)) throw new Error("\u8BF7\u63D0\u4F9B Harness \u7684\u7EDD\u5BF9\u8DEF\u5F84");
+      const entry = path4.join(harnessHome, "profiles/desktop/node_modules/dsh-plugin-tbea-knowledge");
       const packageRoot = await fs2.realpath(entry).catch((error2) => {
         if (error2.code === "ENOENT") throw new Error(`\u672A\u627E\u5230\u5320\u5B9D desktop \u63D2\u4EF6\u5165\u53E3\uFF1A${entry}`, { cause: error2 });
         throw error2;
       });
-      const manifest = JSON.parse(await fs2.readFile(path3.join(packageRoot, "package.json"), "utf8"));
+      const manifest = JSON.parse(await fs2.readFile(path4.join(packageRoot, "package.json"), "utf8"));
       console.log(`Desktop plugin: ${manifest.version}; ${packageRoot}`);
       const { filename, options } = desktopConfigLocations(harnessHome, packageRoot);
       await diagnose(filename, options);
     } else {
       if (values["harness-home"]) throw new Error("--harness-home \u9700\u8981 --desktop");
-      const filename = values.config ?? path3.resolve(path3.dirname(fileURLToPath(import.meta.url)), "../config/local.json");
+      const filename = values.config ?? path4.resolve(path4.dirname(fileURLToPath(import.meta.url)), "../config/local.json");
       await diagnose(filename);
     }
   } catch (error2) {

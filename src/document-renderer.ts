@@ -1,5 +1,5 @@
 import { execFile } from 'node:child_process';
-import { randomUUID } from 'node:crypto';
+import { createHash } from 'node:crypto';
 import { createWriteStream } from 'node:fs';
 import fs from 'node:fs/promises';
 import path from 'node:path';
@@ -7,12 +7,11 @@ import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import { pathToFileURL } from 'node:url';
 import type { DocumentPreviewConfig, Fetcher } from './contracts.ts';
+import { previewEnabled } from './contracts.ts';
 import { originalAddress } from './documents.ts';
-import { mockImage } from './mock.ts';
 import { PlatformError } from './platform.ts';
 import { imageExtension, webDocument } from './preview-content.ts';
 
-const maxPageBytes = 12 * 1024 * 1024;
 const mb = 1024 * 1024;
 const officeFormats = new Set(['doc', 'docx', 'ppt', 'pptx', 'wps', 'dps', 'dpsx']);
 const webFormats = new Set(['txt', 'md', 'html', 'mhtml']);
@@ -21,10 +20,15 @@ const supportedFormats = new Set(['pdf', 'ofd', ...officeFormats, ...webFormats,
 
 export function previewStatus(format: string, settings: DocumentPreviewConfig | undefined, mock: boolean) {
   if (!supportedFormats.has(format)) return 'unsupported' as const;
+  if (settings?.enabled === false || settings?.allowPdfViewer === false) return 'disabled' as const;
   if (mock) return 'available' as const;
-  if (!settings?.enabled) return 'disabled' as const;
-  if (format === 'pdf' || settings.converters[format] || (format !== 'ofd' && settings.office)) return 'available' as const;
+  if (!settings || !previewEnabled(settings)) return 'disabled' as const;
+  if (format === 'pdf' || directText(format, settings) || settings.converters[format] || (format !== 'ofd' && settings.office)) return 'available' as const;
   return 'converter-required' as const;
+}
+
+function directText(format: string, settings: DocumentPreviewConfig) {
+  return (format === 'md' || format === 'txt') && !settings.converters[format];
 }
 
 function inputLimit(format: string) {
@@ -54,7 +58,9 @@ function validateInput(bytes: Buffer, format: string) {
   if (!valid) throw new PlatformError('INVALID_ORIGINAL', '原文件内容与标注格式不符，无法预览');
 }
 
-async function download(address: string, input: string, format: string, signal: AbortSignal, fetcher: Fetcher) {
+export async function downloadDocument(settings: DocumentPreviewConfig, address: string, format: string, directory: string, signal: AbortSignal,
+  progress?: (received: number, total?: number) => void, fetcher: Fetcher = fetch) {
+  const input = path.join(directory, `input.${format}`);
   const url = originalAddress(address);
   if (!url) throw new PlatformError('ORIGINAL_ADDRESS_INVALID', '平台暂未提供可用的同源原文地址');
   const limit = inputLimit(format);
@@ -64,10 +70,15 @@ async function download(address: string, input: string, format: string, signal: 
     await result.body?.cancel().catch(() => {});
     throw new PlatformError('ORIGINAL_UNAVAILABLE', `读取原文失败（HTTP ${result.status}），请重试`);
   }
-  if (Number(result.headers.get('content-length')) > limit) {
+  const length = Number(result.headers.get('content-length'));
+  if (length > limit) {
     await result.body.cancel().catch(() => {});
     throw new PlatformError('ORIGINAL_TOO_LARGE', '原文超过此格式的预览大小限制');
   }
+  // 只有转换产物需要内容指纹，避免把平台临时签名或文档名称当成版本。
+  const digest = format !== 'pdf' && !directText(format, settings) ? createHash('sha256') : undefined;
+  const total = !result.headers.get('content-encoding') && Number.isSafeInteger(length) && length > 0 ? length : undefined;
+  progress?.(0, total);
   const reader = result.body.getReader();
   async function* stream() {
     let size = 0;
@@ -78,11 +89,15 @@ async function download(address: string, input: string, format: string, signal: 
         if (done) break;
         size += value.byteLength;
         if (size > limit) throw new PlatformError('ORIGINAL_TOO_LARGE', '原文超过此格式的预览大小限制');
+        digest?.update(value);
+        progress?.(size, total);
         yield value;
       }
     } finally { await reader.cancel().catch(() => {}); }
   }
   await pipeline(Readable.from(stream()), createWriteStream(input, { flags: 'wx', mode: 0o600 }), { signal });
+  validateInput(await header(input), format);
+  return { input, version: digest?.digest('hex') };
 }
 
 function run(program: string, args: string[], directory: string, signal: AbortSignal, message: string) {
@@ -92,7 +107,9 @@ function run(program: string, args: string[], directory: string, signal: AbortSi
       if (signal.aborted) reject(signal.reason);
       else if (error) {
         // 转换器输出可能包含临时路径、文档内容，不转发给客户端。
-        reject(new PlatformError('RENDER_PROGRAM_FAILED', error.code === 'ENOENT' ? '预览组件路径无效，请联系管理员检查配置' : message));
+        if (error.code === 'ENOENT') return reject(new PlatformError('PREVIEW_PROGRAM_MISSING', '预览组件路径无效，请联系管理员检查配置'));
+        if (error.killed) return reject(new PlatformError('PREVIEW_CONVERSION_TIMEOUT', '文档转换超时，请重试'));
+        reject(new PlatformError('RENDER_PROGRAM_FAILED', message));
       } else resolve(stdout);
     });
   });
@@ -129,12 +146,17 @@ async function convertOffice(input: string, directory: string, program: string, 
   return path.join(directory, `${path.parse(input).name}.pdf`);
 }
 
-export async function prepareDocumentPdf(settings: DocumentPreviewConfig, address: string, format: string, directory: string, signal: AbortSignal, fetcher: Fetcher = fetch) {
-  const original = path.join(directory, `input.${format}`);
-  await download(address, original, format, signal, fetcher);
-  validateInput(await header(original), format);
+export async function preparePreviewDocument(settings: DocumentPreviewConfig, original: string, format: string, directory: string, signal: AbortSignal,
+  stage?: (stage: 'converting' | 'preparing-text') => void) {
+  if (directText(format, settings)) {
+    stage?.('preparing-text');
+    const html = await webDocument(original, format, directory, true);
+    if (Buffer.byteLength(html) > 32 * mb) throw new PlatformError('ORIGINAL_TOO_LARGE', '排版后的原文超过预览大小限制');
+    return { html };
+  }
   let pdf = original;
   if (format !== 'pdf') {
+    stage?.('converting');
     try {
       const converter = settings.converters[format];
       if (converter) {
@@ -151,31 +173,5 @@ export async function prepareDocumentPdf(settings: DocumentPreviewConfig, addres
   if (!bytes || bytes > 300 * mb || !isPdf(await header(pdf).catch(() => Buffer.alloc(0)))) {
     throw new PlatformError('INVALID_CONVERSION', '没有生成可预览的文档，文件可能受保护或需要专用转换组件');
   }
-  return { pdf, bytes };
+  return { pdf, pdfBytes: bytes };
 }
-
-export async function readPageCount(settings: DocumentPreviewConfig, pdf: string, directory: string, signal: AbortSignal) {
-  const info = await run(settings.pdfInfo!, [pdf], directory, signal, '无法读取文档页数，文件可能损坏或受密码保护');
-  const pages = Number(/^Pages:\s+(\d+)\s*$/m.exec(info)?.[1]);
-  if (!Number.isInteger(pages) || pages < 1 || pages > 3000) throw new PlatformError('INVALID_PAGE_COUNT', '文档预览支持 1 至 3000 页');
-  return pages;
-}
-
-export async function prepareDocument(settings: DocumentPreviewConfig, address: string, format: string, directory: string, signal: AbortSignal, fetcher: Fetcher = fetch) {
-  const { pdf } = await prepareDocumentPdf(settings, address, format, directory, signal, fetcher);
-  const pages = await readPageCount(settings, pdf, directory, signal);
-  return { pdf, pages };
-}
-
-export async function renderDocumentPage(settings: DocumentPreviewConfig, pdf: string, page: number, directory: string, signal: AbortSignal) {
-  const prefix = path.join(directory, `page-${page}-${randomUUID()}`);
-  const output = `${prefix}.png`;
-  try {
-    await run(settings.pdfToPpm!, ['-f', String(page), '-l', String(page), '-scale-to', '1800', '-png', '-singlefile', pdf, prefix], directory, signal, '页面渲染失败，请重试');
-    const size = (await fs.stat(output)).size;
-    if (size < 8 || size > maxPageBytes || imageExtension(await header(output, 8)) !== 'png') throw new PlatformError('INVALID_PREVIEW_PAGE', '页面预览图无效或过大');
-    return await fs.readFile(output, { signal });
-  } finally { await fs.rm(output, { force: true }); }
-}
-
-export const mockDocumentPage = () => mockImage().bytes;

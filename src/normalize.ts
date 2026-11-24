@@ -141,6 +141,7 @@ export function modelResult(snapshot: Snapshot, maxCharacters: number, citations
   const decisions: EvidenceDecision[] = [];
   const projected = citations.flatMap(c => {
     const text = c.modelText.slice(0, remaining);
+    let supportingContext = false;
     // 旧快照和刷新后的详情也校验。被截断的正文只能依据实际发给模型的部分判断。
     if (evidence) {
       if (clarification || evidenceScore(c.source.rank_score) < threshold) return [];
@@ -150,10 +151,12 @@ export function modelResult(snapshot: Snapshot, maxCharacters: number, citations
       const topics = proof?.topics.filter(topic => scoped.includes(topic)) ?? [];
       const decision = proof && topics.length ? { ...proof, topics, directTopics: topics } : evidence.evaluate(input);
       if (!decision.topics.length) return [];
+      supportingContext = !decision.directTopics.length;
       decisions.push(decision);
     }
     remaining -= text.length;
     return [{ citationId: c.citationId, knowledgeBase: c.knowledgeBaseName, documentName: c.documentName, chunkId: c.chunkId, page: c.page,
+      ...(supportingContext ? { support: 'related' as const } : {}),
       documentVersion: c.documentVersion, effectiveDate: c.effectiveDate, text, truncated: text.length < c.modelText.length }];
   });
   const assessment = snapshot.retrievalSkipped ? { status: 'not_needed' as const, missingTopics: [] } : evidence?.summarizeDecisions(decisions);
@@ -166,6 +169,7 @@ export function modelResult(snapshot: Snapshot, maxCharacters: number, citations
   if (clarification) notice += clarification;
   else if (assessment?.status === 'none') notice += '本次未找到能支持问题的公司资料。明确说明依据不足，不把通用知识当作公司规定。';
   if (assessment?.status === 'partial') notice += '部分事项缺少公司资料。仅回答有直接依据的部分，并明确列出缺少依据的事项。';
+  if (projected.some(c => c.support === 'related')) notice += '标记为 related 的切片只提供背景或适用范围线索。引用具体标准或金额前，须核对适用条件有直接依据。';
   if (assessment?.status === 'not_needed') notice = '此问题是独立算术题，无需公司知识库，请直接计算回答。';
   return { schema: 'tbea-knowledge/v1' as const, snapshotId: snapshot.id, query: snapshot.query, hitCount: projected.length, totalCount: snapshot.totalCount, mode: snapshot.mode,
     coverage, ...(assessment && { evidenceStatus: assessment.status, missingTopics: assessment.missingTopics }),

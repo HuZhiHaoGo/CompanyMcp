@@ -17,10 +17,7 @@ try {
   await run(tar, ['-xf', archive, '-C', directory], { windowsHide: true });
   const root = path.join(directory, 'dsh-mcp-tbea-knowledge');
   await assert.rejects(fs.stat(path.join(root, 'tools', 'poppler')), { code: 'ENOENT' });
-  for (const executable of ['pdfinfo.exe', 'pdftoppm.exe']) {
-    const { stderr } = await run(path.join(root, 'plugin', 'tools', 'poppler', 'Library', 'bin', executable), ['-v'], { windowsHide: true, timeout: 10000 });
-    console.log(stderr.split(/\r?\n/, 1)[0]);
-  }
+  await assert.rejects(fs.stat(path.join(root, 'plugin', 'tools', 'poppler')), { code: 'ENOENT' });
   const config = JSON.parse(await fs.readFile(path.join(root, 'config/example.json'), 'utf8'));
   config.port = 17865; config.serviceToken = 'o'.repeat(64); config.dataDirectory = path.join(directory, 'data');
   config.documentPreview.enabled = true;
@@ -105,13 +102,11 @@ try {
   const list = await request('library-documents', { libraryId });
   assert.equal(list.value.documents.length, 17);
   const preview = await request('library-open', { libraryId, documentId: 'sample-pdf' });
-  const page = await fetchDisplay('library-page', { previewId: preview.value.previewId, page: 2 });
-  assert.equal(page.headers.get('content-type'), 'image/png');
-  assert.equal(new Uint8Array(await page.arrayBuffer())[0], 137);
   assert.ok(preview.value.pdfBytes > 5);
   const range = await fetchDisplay('library-pdf-range', { previewId: preview.value.previewId, begin: 0, end: 5 });
   assert.equal(range.headers.get('content-type'), 'application/octet-stream');
   assert.equal(await range.text(), '%PDF-');
+  assert.equal((await request('library-preview-result', { previewId: preview.value.previewId, status: 'ready', elapsedMs: 50 })).ok, true);
   const worker = await route.fetch(new Request('http://localhost' + route.path + '?asset=pdf.worker.mjs'));
   assert.match(worker.headers.get('content-type'), /javascript/);
   assert.ok((await worker.arrayBuffer()).byteLength > 1000);
@@ -134,7 +129,9 @@ try {
   assert.equal(desktopConfig.dataDirectory, undefined);
   assert.equal(desktopConfig.documentPreview.enabled, true);
   assert.equal(desktopConfig.documentPreview.allowPdfViewer, true);
-  assert.equal(desktopConfig.documentPreview.pdfInfo, undefined);
+  const diagnostics = await fs.readFile(path.join(harnessHome, 'logs/dsh-mcp-tbea-knowledge.jsonl'), 'utf8');
+  assert.match(diagnostics, /tbea-preview-prepare/);
+  assert.match(diagnostics, /tbea-preview-first-page/);
   if(await fetch('http://127.0.0.1:17865/health',{ signal:AbortSignal.timeout(500) }).then(()=>true,()=>false)) throw new Error('Host exit left its MCP service running');
   console.log('Packaged template generated the Desktop config at first activation. Offline runtime OK without source node_modules or npm.');
 } finally {

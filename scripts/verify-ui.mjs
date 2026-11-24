@@ -1,4 +1,5 @@
 import { chromium } from 'playwright';
+import { samplePreviewPdf } from '../src/pdf-preview.ts';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
@@ -153,18 +154,13 @@ try {
   await edge.close(); console.log('Edge cases: long title, expansion, image retry, grouped sources and partial/empty results OK');
   for (const [name, viewport] of [['catalog-desktop', { width: 1240, height: 840 }], ['catalog-narrow', { width: 390, height: 840 }]]) {
     const page = await browser.newPage({ viewport });
-    const loadedPages = new Set();
+    const pdf = samplePreviewPdf(40);
     const pageErrors = [];
     page.on('pageerror', error => pageErrors.push(error.message));
-    await page.route('**/demo/library/open?**', async route => {
-      const response = await route.fetch();
-      await route.fulfill({ json: { ...(await response.json()), pages: 40 } });
-    });
-    await page.route('**/demo/library/page?**', async route => {
-      const url = new URL(route.request().url());
-      loadedPages.add(Number(url.searchParams.get('page')));
-      url.searchParams.set('page', '1');
-      await route.fulfill({ response: await route.fetch({ url: url.href }) });
+    await page.route('**/demo/library/open?**', route => route.fulfill({ json: { previewId: 'test', pdfBytes: pdf.length } }));
+    await page.route('**/demo/library/pdf-range?**', route => {
+      const args = new URL(route.request().url()).searchParams;
+      return route.fulfill({ body: pdf.subarray(Number(args.get('begin')), Number(args.get('end'))), contentType: 'application/octet-stream' });
     });
     await page.goto('http://127.0.0.1:17869/demo?library');
     const libraryPicker = page.getByRole('combobox', { name: '知识库', exact: true });
@@ -185,7 +181,7 @@ try {
     await page.getByText('找到 1 份文档').waitFor();
     await page.getByRole('button', { name: /预览演示\.pdf/ }).click();
     await page.getByRole('img', { name: '原文第 1 页', exact: true }).waitFor();
-    if (loadedPages.has(40)) throw new Error(`${name}: fetched distant pages before scroll`);
+    if (await page.getByRole('img', { name: '原文第 40 页', exact: true }).count()) throw new Error(`${name}: rendered a distant page before scroll`);
     await page.screenshot({ path: path.join(root, `test-results/${name}.png`) });
     await page.getByText('第 40 页', { exact: true }).scrollIntoViewIfNeeded();
     await page.getByRole('img', { name: '原文第 40 页', exact: true }).waitFor();
@@ -200,38 +196,41 @@ try {
   const dual = await browser.newPage();
   const base = 'http://127.0.0.1:17869';
   let openedDocuments = 0;
-  let countFails = true;
   const outside = [];
   await dual.route('**/*', route => {
     if (new URL(route.request().url()).origin === base) return route.continue();
     outside.push(route.request().url());
     return route.abort();
   });
+  let finishConversion;
+  const conversion = new Promise(resolve => { finishConversion = resolve; });
+  let progress = { phase: 'downloading', elapsedMs: 100, received: 25, total: 100 };
   await dual.route('**/demo/library/open?**', async route => {
     openedDocuments++;
-    const response = await route.fetch();
-    const value = await response.json();
-    delete value.pages;
-    await route.fulfill({ json: value });
+    if (new URL(route.request().url()).searchParams.get('documentId') === 'sample-docx') await conversion;
+    await route.continue();
   });
-  await dual.route('**/demo/library/page-count?**', route => countFails
-    ? route.fulfill({ status: 400, json: { message: '无法读取文档页数' } }) : route.continue());
+  await dual.route('**/demo/library/preview-progress?**', route => route.fulfill({ json: progress }));
   await dual.goto(`${base}/demo?library`);
-  await dual.getByRole('button', { name: /预览演示\.pdf/ }).click();
-  await dual.getByText('无法读取文档页数', { exact: true }).waitFor();
-  await dual.getByRole('button', { name: 'PDF 查看器', exact: true }).click();
+  await dual.getByRole('button', { name: /预览演示\.docx/ }).click();
+  await dual.getByText('25%', { exact: true }).waitFor();
+  progress = { phase: 'converting', elapsedMs: 2100 };
+  await dual.getByRole('progressbar', { name: '正在转换文档…' }).waitFor();
+  await dual.getByText('已用 2 秒', { exact: true }).waitFor();
+  finishConversion();
   await dual.waitForFunction(() => {
     const canvas = document.querySelector('.tbea-library-pdf-page');
     if (!canvas) return false;
     const [red, green, blue, alpha] = canvas.getContext('2d').getImageData(Math.round(canvas.width * 0.2), Math.round(canvas.height * 0.145), 1, 1).data;
     return alpha === 255 && blue > green && green > red;
   });
-  countFails = false;
-  await dual.getByRole('button', { name: '图片预览（Poppler）', exact: true }).click();
-  await dual.getByRole('img', { name: '原文第 1 页', exact: true }).waitFor();
-  if (openedDocuments !== 1 || outside.length) throw new Error('Viewer switch re-opened the document or requested external resources');
+  await dual.getByRole('button', { name: '返回文档目录' }).click();
+  await dual.getByRole('button', { name: /预览演示\.md/ }).click();
+  await dual.getByLabel('文本原文预览').getByRole('heading', { name: '原文预览演示' }).waitFor();
+  if (openedDocuments !== 2 || outside.length) throw new Error('Preview re-opened a document or requested external resources');
   await dual.close();
-  console.log('PDF viewer: Poppler failure recovery, offline worker, and shared document passed');
+  console.log('PDF.js, measured download progress, conversion indicator and direct Markdown preview passed');
+
 } finally {
   await browser?.close(); await app.close();
   if (directory.startsWith(path.join(os.tmpdir(), 'tbea-ui-'))) await fs.rm(directory, { recursive: true, force: true });

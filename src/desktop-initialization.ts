@@ -12,12 +12,8 @@ async function readDeploymentSource(configSource: string) {
   // 兼容位于旧运行目录 config/ 下的配置模板。
   if (typeof config.dataDirectory === 'string' && config.dataDirectory.replaceAll('\\', '/') === '../data') delete config.dataDirectory;
   if (isRecord(config.documentPreview)) {
-    for (const [key, executable] of [['pdfInfo', 'pdfinfo.exe'], ['pdfToPpm', 'pdftoppm.exe']]) {
-      const setting = config.documentPreview[key];
-      if (typeof setting === 'string' && setting.replaceAll('\\', '/') === `../tools/poppler/Library/bin/${executable}`) {
-        delete config.documentPreview[key];
-      }
-    }
+    delete config.documentPreview.pdfInfo;
+    delete config.documentPreview.pdfToPpm;
   }
   return config;
 }

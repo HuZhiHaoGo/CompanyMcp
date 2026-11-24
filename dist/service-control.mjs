@@ -92,6 +92,7 @@ async function validateConfig(config, filename2, options = {}) {
     knowledgeBases,
     dataDirectory,
     limits,
+    diagnosticsDirectory: options.defaultDiagnosticsDirectory ?? path.join(dataDirectory, "logs"),
     retrieval: {
       ...retrieval,
       evidenceScoreThreshold: evidenceThreshold,
@@ -135,7 +136,7 @@ function readSynonyms(value) {
     return { term: item.term.trim(), aliases: words(item.aliases), context: words(item.context) };
   });
 }
-async function readDocumentPreview(value, directory, { bundledPopplerBin, bundledOffice }) {
+async function readDocumentPreview(value, directory, { bundledOffice }) {
   if (value === void 0) return void 0;
   if (!isRecord(value) || typeof value.enabled !== "boolean") throw new Error("documentPreview.enabled \u5FC5\u987B\u4E3A true \u6216 false");
   const { allowPdfViewer } = value;
@@ -145,43 +146,26 @@ async function readDocumentPreview(value, directory, { bundledPopplerBin, bundle
     if (typeof input !== "string" || !input.trim()) throw new Error(`documentPreview.${key} \u5FC5\u987B\u4E3A\u7A0B\u5E8F\u8DEF\u5F84`);
     return path.resolve(directory, input);
   }
-  const { pdfInfo, pdfToPpm, office } = value;
+  const { office } = value;
   const converters = {};
   if (value.converters !== void 0 && !isRecord(value.converters)) throw new Error("documentPreview.converters \u5FC5\u987B\u4E3A\u5BF9\u8C61");
   for (const [format, input] of Object.entries(value.converters ?? {})) {
     if (!/^[a-z0-9]{2,8}$/.test(format)) throw new Error("\u8F6C\u6362\u7EC4\u4EF6\u952E\u5FC5\u987B\u4E3A\u5C0F\u5199\u6587\u4EF6\u6269\u5C55\u540D\uFF0C\u4F8B\u5982 ofd");
     converters[format] = program(input, `converters.${format}`);
   }
-  let info = program(pdfInfo, "pdfInfo");
-  let ppm = program(pdfToPpm, "pdfToPpm");
   let officeProgram = program(office, "office");
   let officeBundled;
-  if (value.enabled && process.platform === "win32") {
-    const legacyBin = path.resolve(directory, "../tools/poppler/Library/bin");
-    const offlineBin = path.resolve(directory, "../plugin/tools/poppler/Library/bin");
-    async function bundledProgram(name, configured, original) {
-      const legacyDefault = !bundledPopplerBin && typeof original === "string" && !path.isAbsolute(original) && configured === path.join(legacyBin, name);
-      if (configured && !legacyDefault) return configured;
-      for (const bin of bundledPopplerBin ? [bundledPopplerBin] : [legacyBin, offlineBin]) {
-        const filename2 = path.join(bin, name);
-        if ((await fs.stat(filename2).catch(() => void 0))?.isFile()) return filename2;
-      }
-      return configured;
-    }
-    [info, ppm] = await Promise.all([bundledProgram("pdfinfo.exe", info, pdfInfo), bundledProgram("pdftoppm.exe", ppm, pdfToPpm)]);
-    if (!officeProgram) {
-      const relative = "tools/libreoffice/program/soffice.com";
-      for (const candidate of bundledOffice ? [bundledOffice] : [path.resolve(directory, "../plugin", relative), path.resolve(directory, "..", relative)]) {
-        if ((await fs.stat(candidate).catch(() => void 0))?.isFile()) {
-          officeProgram = candidate;
-          officeBundled = true;
-          break;
-        }
+  if (value.enabled && allowPdfViewer !== false && !officeProgram && process.platform === "win32") {
+    const relative = "tools/libreoffice/program/soffice.com";
+    for (const candidate of bundledOffice ? [bundledOffice] : [path.resolve(directory, "../plugin", relative), path.resolve(directory, "..", relative)]) {
+      if ((await fs.stat(candidate).catch(() => void 0))?.isFile()) {
+        officeProgram = candidate;
+        officeBundled = true;
+        break;
       }
     }
   }
-  if (value.enabled && (!info || !ppm)) throw new Error("\u542F\u7528\u6B63\u5F0F\u539F\u6587\u9884\u89C8\u9700\u8981\u914D\u7F6E pdfInfo \u548C pdfToPpm");
-  return { enabled: value.enabled, allowPdfViewer, pdfInfo: info, pdfToPpm: ppm, office: officeProgram, officeBundled, converters };
+  return { enabled: value.enabled, allowPdfViewer: allowPdfViewer ?? true, office: officeProgram, officeBundled, converters };
 }
 function readPlatform(raw, mode) {
   function routeFor(key, fallback) {
@@ -235,6 +219,7 @@ function configIdentity(config) {
   const value = { ...config };
   delete value.service;
   delete value.autoRetrieveKnowledge;
+  delete value.diagnosticsDirectory;
   if (!config.documentPreview?.enabled) delete value.documentPreview;
   return createHmac("sha256", config.serviceToken).update(JSON.stringify(canonical(value))).digest("hex");
 }

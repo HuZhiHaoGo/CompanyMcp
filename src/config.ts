@@ -11,9 +11,9 @@ const LEGACY_SEARCH_PATH = '/api/ai_apaas/v1/knowledgebases/query';
 export const RETRIEVAL_DEFAULTS = Object.freeze({ perLibraryTop: 3, libraryTimeoutMs: 8000, roundTimeoutMs: 30000 });
 
 interface ConfigLocations {
-  bundledPopplerBin?: string;
   bundledOffice?: string;
   defaultDataDirectory?: string;
+  defaultDiagnosticsDirectory?: string;
 }
 
 export function parseConfigJson(contents: string): Record<string, unknown> {
@@ -82,6 +82,7 @@ export async function validateConfig(config: Record<string, unknown>, filename: 
 
   return {
     ...config, mode, port, serviceToken, platform, knowledgeBases, dataDirectory, limits,
+    diagnosticsDirectory: options.defaultDiagnosticsDirectory ?? path.join(dataDirectory, 'logs'),
     retrieval: { ...retrieval, evidenceScoreThreshold: evidenceThreshold, diagnostics: overrides.diagnostics, synonyms: readSynonyms(overrides.synonyms),
       semanticReview: overrides.semanticReview === false ? false : undefined, semanticModelOrigins: readModelOrigins(overrides.semanticModelOrigins) },
     documentPreview: await readDocumentPreview(config.documentPreview, directoryPath, options),
@@ -121,7 +122,7 @@ function readSynonyms(value: unknown): EvidenceSynonym[] | undefined {
   });
 }
 
-async function readDocumentPreview(value: unknown, directory: string, { bundledPopplerBin, bundledOffice }: ConfigLocations): Promise<DocumentPreviewConfig | undefined> {
+async function readDocumentPreview(value: unknown, directory: string, { bundledOffice }: ConfigLocations): Promise<DocumentPreviewConfig | undefined> {
   if (value === undefined) return undefined;
   if (!isRecord(value) || typeof value.enabled !== 'boolean') throw new Error('documentPreview.enabled 必须为 true 或 false');
   const { allowPdfViewer } = value;
@@ -131,45 +132,27 @@ async function readDocumentPreview(value: unknown, directory: string, { bundledP
     if (typeof input !== 'string' || !input.trim()) throw new Error(`documentPreview.${key} 必须为程序路径`);
     return path.resolve(directory, input);
   }
-  const { pdfInfo, pdfToPpm, office } = value;
+  const { office } = value;
   const converters: DocumentPreviewConfig['converters'] = {};
   if (value.converters !== undefined && !isRecord(value.converters)) throw new Error('documentPreview.converters 必须为对象');
   for (const [format, input] of Object.entries(value.converters ?? {})) {
     if (!/^[a-z0-9]{2,8}$/.test(format)) throw new Error('转换组件键必须为小写文件扩展名，例如 ofd');
     converters[format] = program(input, `converters.${format}`);
   }
-  let info = program(pdfInfo, 'pdfInfo');
-  let ppm = program(pdfToPpm, 'pdfToPpm');
   let officeProgram = program(office, 'office');
   let officeBundled: boolean | undefined;
-  if (value.enabled && process.platform === 'win32') {
-    const legacyBin = path.resolve(directory, '../tools/poppler/Library/bin');
-    const offlineBin = path.resolve(directory, '../plugin/tools/poppler/Library/bin');
-    async function bundledProgram(name: string, configured: string | undefined, original: unknown) {
-      const legacyDefault = !bundledPopplerBin && typeof original === 'string' && !path.isAbsolute(original)
-        && configured === path.join(legacyBin, name);
-      if (configured && !legacyDefault) return configured;
-      for (const bin of bundledPopplerBin ? [bundledPopplerBin] : [legacyBin, offlineBin]) {
-        const filename = path.join(bin, name);
-        if ((await fs.stat(filename).catch(() => undefined))?.isFile()) return filename;
-      }
-      return configured;
-    }
-    [info, ppm] = await Promise.all([bundledProgram('pdfinfo.exe', info, pdfInfo), bundledProgram('pdftoppm.exe', ppm, pdfToPpm)]);
-    if (!officeProgram) {
-      // 匠宝只查已安装插件，独立服务也能使用同一离线包中的组件。
-      const relative = 'tools/libreoffice/program/soffice.com';
-      for (const candidate of bundledOffice ? [bundledOffice] : [path.resolve(directory, '../plugin', relative), path.resolve(directory, '..', relative)]) {
-        if ((await fs.stat(candidate).catch(() => undefined))?.isFile()) {
-          officeProgram = candidate;
-          officeBundled = true;
-          break;
-        }
+  if (value.enabled && allowPdfViewer !== false && !officeProgram && process.platform === 'win32') {
+    // 匠宝只查已安装插件，独立服务也能使用同一离线包中的组件。
+    const relative = 'tools/libreoffice/program/soffice.com';
+    for (const candidate of bundledOffice ? [bundledOffice] : [path.resolve(directory, '../plugin', relative), path.resolve(directory, '..', relative)]) {
+      if ((await fs.stat(candidate).catch(() => undefined))?.isFile()) {
+        officeProgram = candidate;
+        officeBundled = true;
+        break;
       }
     }
   }
-  if (value.enabled && (!info || !ppm)) throw new Error('启用正式原文预览需要配置 pdfInfo 和 pdfToPpm');
-  return { enabled: value.enabled, allowPdfViewer, pdfInfo: info, pdfToPpm: ppm, office: officeProgram, officeBundled, converters };
+  return { enabled: value.enabled, allowPdfViewer: allowPdfViewer ?? true, office: officeProgram, officeBundled, converters };
 }
 
 function readPlatform(raw: Record<string, unknown>, mode: ServiceConfig['mode']): PlatformConfig {

@@ -212,11 +212,15 @@ body[data-ds-dark-theme] :where(.tbea-sources,.tbea-selection,.tbea-prefetched,.
 .tbea-library-reader-heading { display:flex;align-items:center;gap:8px;padding:9px 12px;border-bottom:1px solid var(--tbea-lib-border); }
 .tbea-library-reader-heading div { min-width:0;flex:1; }
 .tbea-library-reader-heading h2 { font-size:14px;font-weight:600;overflow-wrap:anywhere;line-height:1.4; }
-.tbea-library-reader-heading p,.tbea-library-page-count { color:var(--tbea-lib-muted);font-size:12px;line-height:1.5; }
-.tbea-library-viewers { display:flex;flex-wrap:wrap;gap:6px;padding:7px 12px;border-bottom:1px solid var(--tbea-lib-border); }
-.tbea-library-viewers button[aria-pressed=true] { color:var(--tbea-lib-accent);background:var(--tbea-lib-soft);border-color:var(--tbea-lib-accent); }
+.tbea-library-reader-heading p { color:var(--tbea-lib-muted);font-size:12px;line-height:1.5; }
+.tbea-preview-progress { padding:12px;color:var(--tbea-lib-muted); }
+.tbea-preview-progress div { display:flex;justify-content:space-between;gap:12px; }
+.tbea-preview-progress progress { display:block;width:100%;height:8px;margin-top:8px;accent-color:var(--tbea-lib-accent); }
+.tbea-library-text { flex:1;min-height:0;overflow:auto;padding:12px clamp(10px,3%,24px);line-height:1.6;overflow-wrap:anywhere; }
+.tbea-library-text pre { white-space:pre-wrap; }
+.tbea-library-text img { max-width:100%;height:auto; }
+.tbea-library-text table { border-collapse:collapse; }
 .tbea-library-pdf-page { display:block;width:100%;height:auto;background:#fff; }
-.tbea-library-page-count { white-space:nowrap; }
 .tbea-library-state { display:flex;gap:7px;align-items:center;padding:11px 12px;color:var(--tbea-lib-muted);line-height:1.5;overflow-wrap:anywhere; }
 .tbea-library-state svg { flex:none; }
 .tbea-library-error { flex-wrap:wrap; }
@@ -226,7 +230,6 @@ body[data-ds-dark-theme] :where(.tbea-sources,.tbea-selection,.tbea-prefetched,.
 .tbea-library-page figcaption { padding-top:7px;font-size:11px;color:var(--tbea-lib-muted); }
 .tbea-library-sheet { display:grid;place-items:center;background:#fff;border:1px solid var(--tbea-lib-border);overflow:hidden;color:#24262d; }
 .tbea-library-sheet .tbea-library-state { color:#40444c; }
-.tbea-library-sheet img { display:block;width:100%;height:auto;margin:0;user-select:none; }
 .tbea-cited-documents { width:min(100%, 960px);margin-inline:auto;padding:12px clamp(10px,3%,24px);box-sizing:border-box;height:auto; }
 .tbea-cited-list { margin:0;padding:0;list-style:none; }
 .tbea-cited-row { display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px 16px;align-items:start;padding:10px 4px;border-bottom:1px solid var(--tbea-lib-border); }

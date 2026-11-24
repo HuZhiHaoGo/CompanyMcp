@@ -15,16 +15,14 @@ test('Desktop initialization migrates template defaults and preserves configurat
   const harnessHome = path.join(root, 'Harness with spaces');
   const packageRoot = path.join(root, 'plugin');
   const { filename, options } = desktopConfigLocations(harnessHome, packageRoot);
-  await fs.mkdir(options.bundledPopplerBin, { recursive: true });
-  for (const name of ['pdfinfo.exe', 'pdftoppm.exe']) {
-    await fs.writeFile(path.join(options.bundledPopplerBin, name), 'fixture');
-  }
   await fs.mkdir(path.dirname(options.bundledOffice), { recursive: true });
   await fs.writeFile(options.bundledOffice, 'fixture');
   const source = path.join(root, 'source.json');
   const template = JSON.parse(await fs.readFile(new URL('../config/example.json', import.meta.url), 'utf8'));
   const previewEnabled = process.platform === 'win32';
   template.documentPreview.enabled = previewEnabled;
+  delete template.documentPreview.allowPdfViewer;
+  template.documentPreview.pdfInfo = '../tools/poppler/Library/bin/pdfinfo.exe';
   template.documentPreview.office = 'custom/office.exe';
   await fs.writeFile(source, JSON.stringify(template));
   await initializeDesktop(root, { harnessHome, configSource: source });
@@ -34,10 +32,9 @@ test('Desktop initialization migrates template defaults and preserves configurat
   assert.equal(parsed.dataDirectory, path.join(harnessHome, 'dsh-mcp-tbea-knowledge-data'));
   assert.equal(parsed.documentPreview.office, path.join(harnessHome, 'custom', 'office.exe'));
   assert.equal(parsed.documentPreview.officeBundled, undefined);
-  if (previewEnabled) {
-    assert.equal(parsed.documentPreview.pdfInfo, path.join(options.bundledPopplerBin, 'pdfinfo.exe'));
-    assert.equal(parsed.documentPreview.pdfToPpm, path.join(options.bundledPopplerBin, 'pdftoppm.exe'));
-  }
+  assert.equal(parsed.documentPreview.allowPdfViewer, true);
+  assert.equal(parsed.documentPreview.pdfInfo, undefined);
+  assert.equal(parsed.diagnosticsDirectory, path.join(harnessHome, 'logs'));
   await fs.writeFile(source, JSON.stringify({ ...template, port: 12 }));
   await initializeDesktop(root, { harnessHome, configSource: source });
   assert.equal(await fs.readFile(filename, 'utf8'), saved);

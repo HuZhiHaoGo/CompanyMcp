@@ -8,7 +8,9 @@ for (let first = 65; first <= 90; first++) {
   for (let second = 65; second <= 90; second++) {
     const code = String.fromCharCode(first, second);
     const names = [regionsZh.of(code), regionsEn.of(code)].filter((name): name is string => Boolean(name));
-    if (names.length) regions.set(code, names.map(name => normalize(name)));
+    if (!names.length) continue;
+    const canonical = new Intl.Locale(`und-${code}`).region ?? code;
+    regions.set(canonical, [...new Set([...(regions.get(canonical) ?? []), ...names.map(normalize)])]);
   }
 }
 
@@ -26,11 +28,17 @@ const amount = /上限|限额|标准|最多|封顶|多少/u;
 const process = /流程|步骤|申请|审批|凭证|发票|办理|提交|填写/u;
 const vendor = /供应商|采购|应付账款/u;
 const accounts = /入账|账务|记账|会计凭证/u;
+const cadre = /(?<!非)(?:中干|中层干部|中层管理(?:人员|干部))/u;
+const allowances = /补贴|补助|津贴/u;
+const cityBand = /城市(?:类别|分类|档次)|省会(?:城市)?|[一二三四]类城市/u;
+const travelAmount = /(?:\d+(?:\.\d+)?|[一二三四五六七八九十百千零]+)\s*元|[¥￥]\s*\d/u;
+const temperatureDevice = /光纤(?:测温|温度测量)/u;
+const composition = /由[^。！？\n]{1,220}(?:组成|构成)|(?:组成部分|基本构成|结构组成|组成包括)\s*[:：包括为有]/u;
 
 interface BusinessIntent {
   canonical: string;
   libraryHint: RegExp;
-  verify(body: string): 'direct' | 'related' | undefined;
+  verify(body: string, title: string): 'direct' | 'related' | undefined;
 }
 
 function businessIntent(query: string): BusinessIntent | undefined {
@@ -45,6 +53,29 @@ function businessIntent(query: string): BusinessIntent | undefined {
   if (accounts.test(query) && vendor.test(query)) {
     return { canonical: '供应商发票入账', libraryHint: /供应商结算|财务入账|会计核算|应付账款/u,
       verify: body => vendor.test(body) && accounts.test(body) && /发票|财务|会计/u.test(body) ? 'direct' : undefined };
+  }
+  if (temperatureDevice.test(query) && /变压器|绕组/u.test(query) && /构成|组成|几个部分/u.test(query)) {
+    const product = /绕组/u.test(query) ? /绕组/u : /变压器/u;
+    return { canonical: '变压器 绕组 光纤测温装置 组成 构成', libraryHint: /企业标准|光纤测温|变压器|技术标准/u,
+      verify: (body, title) => {
+        const source = `${title}\n${body}`;
+        return temperatureDevice.test(source) && product.test(source) && composition.test(body) ? 'direct' : undefined;
+      } };
+  }
+  if (travelObject.test(query) && cadre.test(query) && /长沙/u.test(query) && allowances.test(query)) {
+    const category = /伙食|误餐/u.test(query) ? /伙食|误餐|餐费/u
+      : /交通/u.test(query) ? /市内交通|交通补贴|交通补助/u
+        : lodging.test(query) ? lodging : /伙食|餐费|住宿|市内交通|交通补贴|交通补助|差旅补[贴助]/u;
+    return { canonical: '中层干部 长沙 差旅费 伙食补助 市内交通费 城市类别', libraryHint: /差旅|出差|费用报销/u,
+      verify: (body, title) => {
+        if (!travelObject.test(`${title}\n${body}`)) return;
+        const rows = body.split(/[。；;\n]/u);
+        if (rows.some(row => ((row.includes('长沙') || title.includes('长沙')) && (cadre.test(row) || cadre.test(title)))
+          && category.test(row) && travelAmount.test(row))) return 'direct';
+        const hasPolicy = rows.some(row => (cadre.test(row) || cadre.test(title)) && category.test(row));
+        const hasCityBand = rows.some(row => row.includes('长沙') && cityBand.test(row));
+        if (hasPolicy || hasCityBand) return 'related';
+      } };
   }
   if (travelObject.test(query) && expense.test(query)) {
     const isLodging = lodging.test(query);
@@ -215,12 +246,12 @@ export function checkEvidence(query: string, synonyms: readonly EvidenceSynonym[
   function compatible({ text, documentName, documentVersion, effectiveDate }: EvidenceText) {
     const rawBody = normalize(text);
     const body = active.some(rule => rule.context.some(term => contains(rawBody, term))) ? replaceAliases(rawBody) : rawBody;
-    if (!body || clarification) return { body, indices: [] };
+    if (!body || clarification) return { body, title: '', indices: [] };
     const title = normalize(documentName);
     const source = title + '\n' + body;
     if ((day && effectiveDate !== day) || (year && ![documentVersion, effectiveDate, title].some(value => value?.includes(year)) &&
         !source.match(new RegExp(year + '(?:年)?(?:版|修订|生效)|(?:生效日期|版本)\\s*[:：]?\\s*' + year, 'u')))) {
-      return { body, indices: [] };
+      return { body, title, indices: [] };
     }
     const actualStandards = standards.length ? standardRefs(source) : [];
     const indices = topics.flatMap((topic, index) => {
@@ -229,11 +260,11 @@ export function checkEvidence(query: string, synonyms: readonly EvidenceSynonym[
       if (standard && !actualStandards.some(actual => actual.id === standard.id && (!standard.year || actual.year === standard.year))) return [];
       return [index];
     });
-    return { body, indices: topics.length ? indices : [0] };
+    return { body, title, indices: topics.length ? indices : [0] };
   }
 
   function evaluate(item: EvidenceText): EvidenceDecision {
-    const { body, indices } = compatible(item);
+    const { body, title, indices } = compatible(item);
     if (!body) return { topics: [], directTopics: [], quality: 0, reason: 'empty-text' };
     const exactMatch = exact.length >= 4 && compact(body).includes(exact);
     const accepted: number[] = [];
@@ -242,7 +273,7 @@ export function checkEvidence(query: string, synonyms: readonly EvidenceSynonym[
       const topic = topics[index];
       if (!topic) continue;
       if (topic.intent) {
-        const match = topic.intent.verify(body);
+        const match = topic.intent.verify(body, title);
         if (!match) continue;
         if (match === 'direct') directTopics.push(index);
       } else {
@@ -273,10 +304,10 @@ export function checkEvidence(query: string, synonyms: readonly EvidenceSynonym[
     matches, evaluate, summarize: (items: readonly EvidenceText[]) => summarizeDecisions(items.map(evaluate)), summarizeDecisions, clarification,
     // Known business anchors also keep a semantic decision from upgrading a different procedure.
     semanticTopics: (item: EvidenceText) => {
-      const { body, indices } = compatible(item);
+      const { body, title, indices } = compatible(item);
       return indices.filter(index => {
         const intent = topics[index]?.intent;
-        return !intent || intent.verify(body) === 'direct';
+        return !intent || intent.verify(body, title) === 'direct';
       });
     },
     confident: (item: EvidenceText) => {

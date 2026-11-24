@@ -60,7 +60,7 @@ function Demo() {
 const libraryBridge = async (endpoint, args, signal) => {
   const response = await fetch(`/demo/library/${endpoint.slice(8)}?${new URLSearchParams(args)}`, { signal });
   if (!response.ok) throw new Error((await response.json()).message || `HTTP ${response.status}`);
-  if (endpoint === 'library-page' || endpoint === 'library-pdf-range') return { bytes: new Uint8Array(await response.arrayBuffer()), mediaType: response.headers.get('content-type') };
+  if (endpoint === 'library-pdf-range') return { bytes: new Uint8Array(await response.arrayBuffer()), mediaType: response.headers.get('content-type') };
   return response.json();
 };
 

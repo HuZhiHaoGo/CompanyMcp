@@ -1,11 +1,11 @@
 import React, { useEffect, useRef, useState } from 'react';
-import type { ReactNode, RefObject } from 'react';
+import type { ReactNode } from 'react';
 import { ArrowLeft, BookOpen, FileText, LoaderCircle, RotateCcw, Search } from 'lucide-react';
 import type { LibraryBrowser as LibraryService } from '../../src/library-browser.ts';
 import type { documentRecord } from '../../src/documents.ts';
 import type { previewStatus } from '../../src/document-renderer.ts';
 import { displayPath } from './display-transport.mjs';
-import { PdfViewer } from './pdf-viewer.tsx';
+import { PdfViewer, PreviewMeter } from './pdf-viewer.tsx';
 
 type LibraryRequests = {
   'library-catalog': {
@@ -20,13 +20,13 @@ type LibraryRequests = {
     args: { libraryId: string; documentId: string };
     result: Awaited<ReturnType<LibraryService['open']>>;
   };
-  'library-page': {
-    args: { previewId: string; page: number };
-    result: { bytes: Uint8Array<ArrayBuffer> };
+  'library-preview-progress': {
+    args: { libraryId: string; documentId: string };
+    result: Awaited<ReturnType<LibraryService['previewProgress']>>;
   };
-  'library-page-count': {
-    args: { previewId: string };
-    result: Awaited<ReturnType<LibraryService['pageCount']>>;
+  'library-preview-result': {
+    args: { previewId: string; status: 'ready' | 'password' | 'invalid-pdf' | 'load-failed' | 'render-failed'; elapsedMs: number };
+    result: Awaited<ReturnType<LibraryService['previewResult']>>;
   };
   'library-pdf-range': {
     args: { previewId: string; begin: number; end: number };
@@ -143,70 +143,46 @@ export function DocumentReader({ bridge, libraryId, documentInfo, close, request
   const { id, name, format, status, createdAt, bytes, preview } = documentInfo;
   const canOpen = requestPreview ?? (preview === 'available');
   const state = useLibraryRequest(bridge, 'library-open', { libraryId, documentId: id }, canOpen ? JSON.stringify([libraryId, id]) : undefined);
-  const [usePdf, setUsePdf] = useState(false);
   const opened = state.value;
-  const pdfMode = usePdf && Boolean(opened?.pdfBytes);
-  const count = useLibraryRequest(bridge, 'library-page-count', { previewId: opened?.previewId ?? '' },
-    opened && !pdfMode && opened.pages === undefined ? opened.previewId : undefined);
-  const pages = opened?.pages ?? count.value?.pages;
+  const [progress, setProgress] = useState<LibraryRequests['library-preview-progress']['result']>(null);
+  useEffect(() => {
+    if (!state.loading) return;
+    setProgress(null);
+    const controller = new AbortController();
+    let timer: ReturnType<typeof setTimeout>;
+    const poll = async () => {
+      try {
+        const update = await bridge('library-preview-progress', { libraryId, documentId: id }, controller.signal);
+        if (!controller.signal.aborted) setProgress(update);
+      } catch { /* 原文请求会展示最终错误，进度查询可以重试。 */ }
+      if (!controller.signal.aborted) timer = setTimeout(poll, 400);
+    };
+    timer = setTimeout(poll, 150);
+    return () => { controller.abort(); clearTimeout(timer); };
+  }, [bridge, libraryId, id, state.loading]);
+  const progressLabel = { queued: '等待预览资源…', details: '正在读取文档详情…', downloading: '正在下载原件…',
+    converting: '正在转换文档…', 'preparing-text': '正在排版原文…' };
   const facts = [format?.toUpperCase(), bytes != null ? formatSize(bytes) : undefined, createdAt ? new Date(createdAt).toLocaleDateString('zh-CN') : undefined, status ? statusLabels[status] ?? status : undefined].filter(Boolean);
   return <article className="tbea-library-reader" aria-label="原文预览">
-    <div className="tbea-library-reader-heading"><button type="button" className="tbea-library-button" aria-label={backLabel} onClick={close}><ArrowLeft size={16} /></button><div><h2>{name}</h2>{facts.length > 0 && <p>{facts.join(' · ')}</p>}</div>{!pdfMode && pages !== undefined && <span className="tbea-library-page-count">{pages} 页</span>}</div>
-    {opened?.pdfBytes && <div className="tbea-library-viewers" role="group" aria-label="原文预览方式">
-      <button type="button" className="tbea-library-button" aria-pressed={!pdfMode} onClick={() => setUsePdf(false)}>图片预览（Poppler）</button>
-      <button type="button" className="tbea-library-button" aria-pressed={pdfMode} onClick={() => setUsePdf(true)}>PDF 查看器</button>
-    </div>}
-    {state.loading && <Wait>正在准备原文预览…</Wait>}
+    <div className="tbea-library-reader-heading"><button type="button" className="tbea-library-button" aria-label={backLabel} onClick={close}><ArrowLeft size={16} /></button><div><h2>{name}</h2>{facts.length > 0 && <p>{facts.join(' · ')}</p>}</div></div>
+    {state.loading && <PreviewMeter key={progress?.phase} label={progress ? progressLabel[progress.phase] : '正在准备原文预览…'}
+      elapsedMs={progress?.elapsedMs} received={progress?.received} total={progress?.total} />}
     {state.error && <Failure retry={state.retry}>{state.error}</Failure>}
     {preview && preview !== 'available' && <div className="tbea-library-state">{states[preview]}。</div>}
-    {opened && (pdfMode && opened.pdfBytes
+    {opened && (opened.pdfBytes
       ? <PdfViewer key={opened.previewId} bridge={bridge} previewId={opened.previewId} bytes={opened.pdfBytes} assetPath={pdfAssetPath} restart={state.retry} />
-      : pages !== undefined ? <PreviewPages key={opened.previewId} bridge={bridge} previewId={opened.previewId} pages={pages} restart={state.retry} />
-        : count.error ? <Failure retry={count.error.includes('预览已过期') ? state.retry : count.retry}>{count.error}</Failure>
-          : <Wait>正在读取文档页数…</Wait>)}
+      : opened.html !== undefined && <TextPreview key={opened.previewId} bridge={bridge} previewId={opened.previewId} html={opened.html} />)}
   </article>;
 }
 
-function PreviewPages({ bridge, previewId, pages, restart }: { previewId: string; pages: number; bridge: LibraryBridge; restart: () => void }) {
-  const root = useRef<HTMLDivElement>(null);
-  return <div className="tbea-library-pages" ref={root} tabIndex={0} aria-label="原文页面，滚动连续阅读">
-    {Array.from({ length: pages }, (_, i) => <PreviewPage key={i} root={root} bridge={bridge} previewId={previewId} page={i + 1} restart={restart} />)}
-  </div>;
-}
-
-function PreviewPage({ root, bridge, previewId, page, restart }: {
-  root: RefObject<HTMLDivElement>; bridge: LibraryBridge; previewId: string; page: number; restart: () => void;
-}) {
-  const element = useRef<HTMLElement>(null);
-  const [near, setNear] = useState(page === 1);
-  const [ratio, setRatio] = useState<string>();
-  const [error, setError] = useState('');
-  const [url, setUrl] = useState('');
-  const [revision, setRevision] = useState(0);
+function TextPreview({ bridge, previewId, html }: { bridge: LibraryBridge; previewId: string; html: string }) {
+  const started = useRef(performance.now());
   useEffect(() => {
-    const observer = new IntersectionObserver(([entry]) => setNear(entry.isIntersecting), { root: root.current, rootMargin: '650px 0px' });
-    if (element.current) observer.observe(element.current);
-    return () => observer.disconnect();
-  }, [root]);
-  useEffect(() => {
-    if (!near || error) return;
-    const controller = new AbortController();
-    let objectUrl: string | undefined;
-    bridge('library-page', { previewId, page }, controller.signal).then(asset => {
-      if (controller.signal.aborted) return;
-      objectUrl = URL.createObjectURL(new Blob([asset.bytes], { type: 'image/png' }));
-      setUrl(objectUrl);
-    }, failure => {
-      if (!controller.signal.aborted) setError(errorMessage(failure));
+    const frame = requestAnimationFrame(() => {
+      void bridge('library-preview-result', { previewId, status: 'ready', elapsedMs: Math.round(performance.now() - started.current) }, AbortSignal.timeout(5000)).catch(() => {});
     });
-    return () => { controller.abort(); if (objectUrl) URL.revokeObjectURL(objectUrl); setUrl(''); };
-  }, [near, previewId, page, bridge, revision, error]);
-  return <figure className="tbea-library-page" ref={element}>
-    <div className="tbea-library-sheet" style={{ aspectRatio: ratio || '1 / 1.414' }}>
-      {url ? <img draggable={false} onContextMenu={event => event.preventDefault()} src={url} alt={`原文第 ${page} 页`} onLoad={event => { const { naturalWidth, naturalHeight } = event.currentTarget; if (naturalWidth && naturalHeight) setRatio(`${naturalWidth} / ${naturalHeight}`); }} />
-        : error ? <Failure retry={() => { if (error.includes('预览已过期')) restart(); else { setError(''); setRevision(value => value + 1); } }}>{error}</Failure>
-          : near && <Wait>正在加载第 {page} 页…</Wait>}
-    </div>
-    <figcaption>第 {page} 页</figcaption>
-  </figure>;
+    return () => cancelAnimationFrame(frame);
+  }, [bridge, previewId]);
+  // 内容由本插件的静态白名单渲染器重新生成，只包含文本、排版元素和已验证的内嵌图像。
+  return <div aria-label="文本原文预览" className="tbea-library-text" tabIndex={0} dangerouslySetInnerHTML={{ __html: html }} />;
 }

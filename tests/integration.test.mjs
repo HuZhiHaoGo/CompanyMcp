@@ -72,9 +72,7 @@ test('DSH Host 适配器使用真实 MCP，将模型文字与持久展示 meta �
   const catalog = (await request('library-catalog', {})).value;
   const libraryId = catalog.libraries[0].id;
   const { value: preview } = await request('library-open', { libraryId, documentId: 'sample-pdf' });
-  const page = await request('library-page', { previewId: preview.previewId, page: 1 });
-  assert.equal(page.value.mediaType, 'image/png');
-  assert.equal(page.value.bytes[0], 137);
+  assert.equal(preview, undefined, 'explicitly disabled preview stays unavailable');
 });
 
 test('DSH 托管服务通过真实 MCP 在手动和按需入口使用当前内网模型', async t => {

@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { appendDiagnostic } from './diagnostics.ts';
 import type { Tool } from '@modelcontextprotocol/sdk/types.js';
 import { normalizeCitation, modelResult, publicSnapshot, citationKnowledgeBaseId } from './normalize.ts';
 import { Store, requireImageId, requireSnapshotId } from './store.ts';
@@ -208,10 +209,10 @@ export class KnowledgeService {
     signal?.throwIfAborted();
     await this.store.save(snapshot, signal);
     signal?.throwIfAborted();
-    if (settings.diagnostics && live) console.info(JSON.stringify({
+    if (settings.diagnostics && live) await appendDiagnostic(this.config, {
       event: 'tbea-retrieval', searchId: id, threshold, coverage: result.coverage, passes, candidates, topics: evidence?.diagnosticTopics, semantic,
       ms: Math.round(performance.now() - started),
-    }));
+    });
     return this.result(snapshot);
   }
   private evidenceThreshold() {

@@ -65,6 +65,7 @@ export interface ServiceConfig extends JsonRecord {
   port: number;
   serviceToken: string;
   dataDirectory: string;
+  diagnosticsDirectory?: string;
   service?: { autoStart?: boolean };
   autoRetrieveKnowledge: boolean;
   platform: PlatformConfig;
@@ -78,11 +79,13 @@ export interface ServiceConfig extends JsonRecord {
 export interface DocumentPreviewConfig {
   enabled: boolean;
   allowPdfViewer?: boolean;
-  pdfInfo?: string;
-  pdfToPpm?: string;
   office?: string;
   officeBundled?: boolean;
   converters: Partial<Record<string, string>>;
+}
+
+export function previewEnabled(settings: DocumentPreviewConfig | undefined) {
+  return settings?.enabled === true && settings.allowPdfViewer !== false;
 }
 
 export interface Coverage {

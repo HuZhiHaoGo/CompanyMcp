@@ -8,8 +8,6 @@
   "documentPreview": {
     "enabled": true,
     "allowPdfViewer": true,
-    "pdfInfo": "../tools/poppler/Library/bin/pdfinfo.exe",
-    "pdfToPpm": "../tools/poppler/Library/bin/pdftoppm.exe",
     "office": "",
     "converters": {}
   },

@@ -32,7 +32,7 @@ export function imageExtension(bytes: Buffer) {
 }
 
 /** 仅重新生成静态内容及本次封装包里的图片路径。网页中的外链和活动元素不会进入转换器。 */
-export async function staticHtml(input: string, directory: string, embedded = new Map<string, Buffer>()) {
+export async function staticHtml(input: string, directory: string, embedded = new Map<string, Buffer>(), browser = false) {
   const tree = parse(input);
   let images = 0;
   let imageBytes = 0;
@@ -51,12 +51,13 @@ export async function staticHtml(input: string, directory: string, embedded = ne
       if (!ext || !bytes || images >= 200 || imageBytes + bytes.length > 20 * 1024 * 1024) return alt ? `<span>${escape(alt)}</span>` : '';
       const name = `inline-${++images}.${ext}`;
       imageBytes += bytes.length;
-      await fs.writeFile(path.join(directory, name), bytes);
+      if (!browser) await fs.writeFile(path.join(directory, name), bytes);
+      const target = browser ? `data:image/${ext === 'jpg' ? 'jpeg' : ext};base64,${bytes.toString('base64')}` : name;
       const width = attrs.get('width') ?? '';
       const height = attrs.get('height') ?? '';
       const dimensions = [width, height].every(n => /^\d{1,4}$/.test(n))
         ? ` width="${Math.min(620, Number(width))}" height="${Math.round(Math.min(1, 620 / Number(width)) * Number(height))}"` : ' width="480"';
-      return `<img src="${name}"${dimensions}${alt ? ` alt="${escape(alt)}"` : ''}>`;
+      return `<img src="${target}"${dimensions}${alt ? ` alt="${escape(alt)}"` : ''}>`;
     }
     let content = '';
     if ('childNodes' in node) for (const child of node.childNodes) content += await render(child, depth + 1);
@@ -66,10 +67,11 @@ export async function staticHtml(input: string, directory: string, embedded = ne
     return `<${tag}${span}${tag === 'table' ? ' border="1" cellpadding="4"' : ''}>${content}</${tag}>`;
   }
   const body = await render(tree, 0);
+  if (browser) return body;
   return `<!doctype html><html><head><meta charset="utf-8"><style>body{font-size:11pt}pre{white-space:pre-wrap}</style></head><body>${body}</body></html>`;
 }
 
-export async function webDocument(input: string, format: string, directory: string) {
+export async function webDocument(input: string, format: string, directory: string, browser = false) {
   const bytes = await fs.readFile(input);
   const embedded = new Map<string, Buffer>();
   let html: string;
@@ -99,6 +101,8 @@ export async function webDocument(input: string, format: string, directory: stri
     html = format === 'md' ? micromark(value, { extensions: [gfm()], htmlExtensions: [gfmHtml()] }) : format === 'txt' ? `<p>${escape(value).replace(/\r\n?|\n/g, '<br>')}</p>` : value;
   }
   const target = path.join(directory, 'content.html');
-  await fs.writeFile(target, await staticHtml(html, directory, embedded));
+  const markup = await staticHtml(html, directory, embedded, browser);
+  if (browser) return markup;
+  await fs.writeFile(target, markup);
   return target;
 }

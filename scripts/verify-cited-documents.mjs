@@ -57,11 +57,10 @@ try {
         if (args.snapshotId === 'denied') return Response.json({ ok: false, error: { message: '权限已变更' } });
         return Response.json({ ok: true, value: { citations: args.snapshotId === 'earliest' ? [common, earliest] : [common] } });
       }
-      if (endpoint === 'library-open') return Response.json({ ok: true, value: { previewId: 'preview', pages: 1 } });
-      if (endpoint === 'library-page') {
-        const image = Uint8Array.from(atob('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/lSkAAAAASUVORK5CYII='), x => x.charCodeAt(0));
-        return new Response(image, { headers: { 'content-type': 'image/png' } });
-      }
+      if (endpoint === 'library-open') return Response.json({ ok: true, value: {
+        previewId: 'preview', html: '<p>原文预览内容</p>'
+      } });
+      if (endpoint === 'library-preview-result') return Response.json({ ok: true, value: { recorded: true } });
       throw new Error(endpoint);
     };
     let entry, dock;
@@ -98,7 +97,7 @@ try {
   await page.getByText('正文已引用').waitFor();
   await page.getByText('部分参考来源暂时无法读取。').waitFor();
   await common.click();
-  await page.waitForFunction(() => document.querySelector('.tbea-library-sheet img')?.naturalWidth === 1);
+  await page.getByLabel('文本原文预览').getByText('原文预览内容').waitFor();
   assert.deepEqual(await page.evaluate(() => requests.find(row => row.endpoint === 'library-open').args), { libraryId: 'kb-a', documentId: 'same' });
   await page.getByRole('button', { name: '返回引用文档' }).click();
   const row = page.locator('.tbea-cited-row', { has: common });
@@ -109,12 +108,12 @@ try {
   await page.getByRole('button', { name: '正文链接' }).click();
   const dialog = page.getByRole('dialog', { name: '知识库引用原文' });
   await dialog.getByRole('heading', { name: '检修作业规范.pdf' }).waitFor();
-  await page.waitForFunction(() => document.querySelector('dialog .tbea-library-sheet img')?.naturalWidth === 1);
+  await dialog.getByLabel('文本原文预览').getByText('原文预览内容').waitFor();
   await dialog.getByRole('button', { name: '关闭引用预览' }).click();
   await page.getByRole('button', { name: '跨轮链接 1' }).click();
   await dialog.getByRole('alert').getByText('对应轮次没有可打开的知识库引用。').waitFor();
   assert.equal(await page.evaluate(() => window.nativeFileOpened), undefined);
   assert.equal(await page.evaluate(() => window.pages), 2);
   assert.deepEqual(errors, []);
-  console.log('Chrome 验证通过：翻阅两页旧历史、同文档去重、权限错误后继续显示、原文 PNG 预览、按轮次跳转。');
+  console.log('Chrome 验证通过：翻阅两页旧历史、同文档去重、权限错误后继续显示、原文预览、按轮次跳转。');
 } finally { await browser.close(); }

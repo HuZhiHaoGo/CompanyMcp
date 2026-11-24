@@ -4,6 +4,8 @@ import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 import { readConfig } from '../src/config.ts';
 import { commandHarnessHome, desktopConfigLocations } from '../src/desktop-config.ts';
+import { previewEnabled } from '../src/contracts.ts';
+import { diagnosticFilename } from '../src/diagnostics.ts';
 import { configIdentity,SERVICE_VERSION,RUNTIME_PROTOCOL } from '../src/runtime.ts';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
@@ -11,10 +13,11 @@ import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/
 export async function diagnose(filename, options) {
   console.log(`Configuration: ${path.resolve(filename)}`);
   const config = await readConfig(filename, options); const base = `http://127.0.0.1:${config.port}`;
-  if (config.documentPreview?.enabled) {
-    console.log(`Poppler: ${config.documentPreview.pdfInfo}; ${config.documentPreview.pdfToPpm}`);
-    console.log(`LibreOffice: ${config.documentPreview.office ?? 'not configured'}`);
+  if (previewEnabled(config.documentPreview)) {
+    console.log('PDF.js: enabled');
+    console.log(`LibreOffice: ${config.documentPreview?.office ?? 'not configured'}`);
   }
+  console.log(`Knowledge diagnostics: ${diagnosticFilename(config)}`);
   console.log(`Node: ${process.version}; mode: ${config.mode}; service: ${base}`);
   console.log(`DSH knowledge retrieval: ${config.autoRetrieveKnowledge ? 'on-demand' : 'manual-only'}`);
   const health = await fetch(`${base}/health`, { signal: AbortSignal.timeout(5000) });

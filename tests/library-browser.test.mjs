@@ -7,7 +7,7 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { pathToFileURL } from 'node:url';
 import { listDocuments, originalAddress } from '../src/documents.ts';
-import { previewStatus, prepareDocument, renderDocumentPage } from '../src/document-renderer.ts';
+import { previewStatus, downloadDocument, preparePreviewDocument } from '../src/document-renderer.ts';
 import { mockImage } from '../src/mock.ts';
 import { staticHtml, webDocument } from '../src/preview-content.ts';
 import { createKnowledgeServer } from '../src/server.ts';
@@ -56,7 +56,7 @@ test('网页转换保留文本表格和封装图片，移除网络地址及活�
   assert.doesNotMatch(rendered, /https:\/\//);
 });
 
-test('正式目录 HTTP 脱敏与授权，演示预览仅返回 PNG 页', async t => {
+test('正式目录 HTTP 脱敏与授权，明确关闭查看器时不允许原文和区间读取', async t => {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'tbea-test-library-'));
   t.after(() => fs.rm(directory, { recursive: true, force: true }));
   const token = 'fixture'.repeat(10);
@@ -78,14 +78,9 @@ test('正式目录 HTTP 脱敏与授权，演示预览仅返回 PNG 页', async 
       } else {
         assert.equal(docs.total, 17);
         const preview = await (await fetch(`${base}/library/open?libraryId=demo-design&documentId=sample-pdf`, { headers })).json();
-        assert.equal(preview.pages, 4);
-        assert.equal(preview.pdfBytes, undefined);
-        const blocked = await fetch(`${base}/library/pdf-range?previewId=${preview.previewId}&begin=0&end=5`, { headers });
+        assert.equal(preview.code, 'PREVIEW_UNAVAILABLE');
+        const blocked = await fetch(`${base}/library/pdf-range?previewId=invalid&begin=0&end=5`, { headers });
         assert.equal((await blocked.json()).code, 'PDF_VIEWER_DISABLED');
-        const result = await fetch(`${base}/library/page?previewId=${preview.previewId}&page=4`, { headers });
-        assert.equal(result.headers.get('content-type'), 'image/png');
-        assert.deepEqual(Buffer.from(await result.arrayBuffer()).subarray(0, 8), mockImage().bytes.subarray(0, 8));
-        assert.equal((await fetch(`${base}/library/page?previewId=${preview.previewId}&page=5`, { headers })).status, 400);
       }
     } finally { await app.close(); }
   }
@@ -100,14 +95,14 @@ test('原件限制同源并保留专用组件配置入口', () => {
   assert.equal(previewStatus('ofd', { ...settings, converters: { ofd: 'ofd-converter' } }, false), 'available');
 });
 
-test('PDF 查看器在 Poppler 失败后复用文档，并按鉴权和区间读取', async t => {
+test('PDF 原件直接按鉴权和区间读取，保存首屏诊断', async t => {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'tbea-test-pdf-viewer-'));
   t.after(() => fs.rm(directory, { recursive: true, force: true }));
   const token = 'pdf-viewer'.repeat(8);
   const sample = samplePreviewPdf(4);
   let downloads = 0;
   const app = await createKnowledgeServer({ ...example, mode: 'live', port: 0, serviceToken: token, dataDirectory: directory,
-    knowledgeDirectory: { mode: 'static' }, documentPreview: { enabled: true, allowPdfViewer: true, pdfInfo: process.execPath, converters: {} },
+    knowledgeDirectory: { mode: 'static' }, documentPreview: { enabled: true, allowPdfViewer: true, converters: {} },
   }, { fetcher: async url => {
     if (url.pathname === '/file') { downloads++; return new Response(sample); }
     assert.equal(url.searchParams.get('Action'), 'DescribeDocument');
@@ -122,9 +117,6 @@ test('PDF 查看器在 Poppler 失败后复用文档，并按鉴权和区间读�
     const preview = await opened.json();
     assert.equal(preview.pdfBytes, sample.length);
     assert.equal(preview.pages, undefined);
-    const count = await fetch(`${base}/library/page-count?previewId=${preview.previewId}`, { headers });
-    assert.equal(count.status, 400);
-    assert.equal((await count.json()).code, 'RENDER_PROGRAM_FAILED');
     const range = `${base}/library/pdf-range?previewId=${preview.previewId}`;
     assert.equal((await fetch(`${range}&begin=0&end=5`)).status, 401);
     assert.equal((await fetch(`${range}&begin=0&end=${sample.length + 1}`, { headers })).status, 400);
@@ -136,13 +128,19 @@ test('PDF 查看器在 Poppler 失败后复用文档，并按鉴权和区间读�
     const remainder = await fetch(`${range}&begin=5&end=${sample.length}`, { headers });
     assert.deepEqual(Buffer.from(await remainder.arrayBuffer()), sample.subarray(5));
     assert.equal(downloads, 1);
+    const metric = await fetch(`${base}/library/preview-result?previewId=${preview.previewId}&status=ready&elapsedMs=35`, { headers });
+    assert.equal((await metric.json()).recorded, true);
+    const logs = (await fs.readFile(path.join(directory, 'logs/dsh-mcp-tbea-knowledge.jsonl'), 'utf8')).trim().split('\n').map(JSON.parse);
+    assert.ok(logs.some(row => row.event === 'tbea-preview-prepare' && row.timing.some(step => step.phase === 'downloading')));
+    assert.ok(logs.some(row => row.event === 'tbea-preview-first-page' && row.status === 'ready'));
+    assert.doesNotMatch(JSON.stringify(logs), /fixture-private|X-Amz|验证.pdf/);
   } finally { await app.close(); }
 });
 
-test('使用真实 LibreOffice 和 Poppler 生成预览页', { skip: !process.env.TBEA_TEST_OFFICE || !process.env.TBEA_TEST_PDFINFO || !process.env.TBEA_TEST_PDFTOPPM, timeout: 175000 }, async t => {
+test('使用真实 LibreOffice 转换文档，文本直接展示', { skip: !process.env.TBEA_TEST_OFFICE, timeout: 175000 }, async t => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'tbea-test-renderer-'));
   t.after(() => fs.rm(root, { recursive: true, force: true }));
-  const settings = { enabled: true, office: process.env.TBEA_TEST_OFFICE, pdfInfo: process.env.TBEA_TEST_PDFINFO, pdfToPpm: process.env.TBEA_TEST_PDFTOPPM, converters: {} };
+  const settings = { enabled: true, office: process.env.TBEA_TEST_OFFICE, converters: {} };
   const nativeSignal = AbortSignal.timeout(170000);
   const md = Buffer.from('# 工程说明\n\n| 内容 | 数值 |\n| --- | --- |\n| 项目 | 10 |');
   const fixtures = { html: Buffer.from('<h1>Title</h1><table><tr><td>engine</td></tr></table>'), txt: Buffer.from('示例文本\n第二行'), md, png: mockImage().bytes,
@@ -170,21 +168,40 @@ test('使用真实 LibreOffice 和 Poppler 生成预览页', { skip: !process.en
   ]);
   async function verify(format) {
     const directory = await fs.mkdtemp(path.join(root, `${format}-`));
-    const result = await prepareDocument(settings, signed, format, directory, nativeSignal, async (_url, request) => {
+    const { input } = await downloadDocument(settings, signed, format, directory, nativeSignal, undefined, async (_url, request) => {
       assert.equal(request.redirect, 'error');
       assert.equal(request.headers, undefined);
       return new Response(fixtures[format]);
     });
-    if (format === 'html') fixtures.pdf = await fs.readFile(result.pdf);
-    assert.ok(result.pages > 0, format);
-    const png = await renderDocumentPage(settings, result.pdf, 1, directory, nativeSignal);
-    assert.deepEqual(png.subarray(0, 8), mockImage().bytes.subarray(0, 8), format);
-    return result.pdf;
+    const result = await preparePreviewDocument(settings, input, format, directory, nativeSignal);
+    if (format === 'txt' || format === 'md') {
+      assert.match(result.html, /示例文本|工程说明/u);
+      assert.equal(result.pdf, undefined);
+      return;
+    }
+    assert.ok(result.pdfBytes > 0, format);
+    assert.equal((await fs.readFile(result.pdf)).subarray(0, 5).toString(), '%PDF-', format);
   }
   await Promise.all(Object.keys(fixtures).map(verify));
-  const pdf = await verify('pdf');
-  const imagePrefix = path.join(root, 'image');
-  await promisify(execFile)(settings.pdfToPpm, ['-f', '1', '-l', '1', '-scale-to', '200', '-jpeg', '-singlefile', pdf, imagePrefix], { signal: nativeSignal });
-  fixtures.jpg = fixtures.jpeg = await fs.readFile(`${imagePrefix}.jpg`);
-  await Promise.all([verify('jpg'), verify('jpeg')]);
+  let bytes = fixtures.docx;
+  const app = await createKnowledgeServer({ ...example, mode: 'live', port: 0, serviceToken: 'cache-fixture'.repeat(6), dataDirectory: root,
+    knowledgeDirectory: { mode: 'static' }, documentPreview: settings,
+  }, { fetcher: async url => url.pathname === '/file' ? new Response(bytes)
+    : Response.json({ data: { id: 'word', name: '版本验证.docx', download_url: signed } }) });
+  try {
+    const { port } = await app.listen();
+    const base = `http://127.0.0.1:${port}/library/open?libraryId=demo-design&documentId=word`;
+    async function open() {
+      const response = await fetch(base, { headers: { Authorization: `Bearer ${'cache-fixture'.repeat(6)}` } });
+      assert.equal(response.ok, true);
+      return response.json();
+    }
+    const first = await open();
+    assert.equal((await open()).previewId, first.previewId);
+    bytes = Buffer.concat([bytes, Buffer.from('new revision')]);
+    assert.notEqual((await open()).previewId, first.previewId);
+    const logs = (await fs.readFile(path.join(root, 'logs/dsh-mcp-tbea-knowledge.jsonl'), 'utf8')).trim().split('\n').map(JSON.parse);
+    assert.deepEqual(logs.map(line => line.cached), [false, true, false]);
+    assert.deepEqual(logs.map(line => line.timing.some(step => step.phase === 'converting')), [true, false, true]);
+  } finally { await app.close(); }
 });

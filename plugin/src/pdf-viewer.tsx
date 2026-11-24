@@ -1,9 +1,24 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import type { RefObject } from 'react';
 import type { PDFDocumentLoadingTask, PDFDocumentProxy } from 'pdfjs-dist';
 import type { LibraryBridge } from './library-browser.tsx';
 
 const requestBytes = 1024 * 1024;
+
+export function PreviewMeter({ label, elapsedMs, received, total }: { label: string; elapsedMs?: number; received?: number; total?: number }) {
+  const [seconds, setSeconds] = useState(0);
+  useEffect(() => {
+    if (elapsedMs !== undefined) return;
+    const start = performance.now();
+    const timer = setInterval(() => setSeconds(Math.floor((performance.now() - start) / 1000)), 1000);
+    return () => clearInterval(timer);
+  }, [elapsedMs]);
+  const value = total && received !== undefined ? Math.min(100, Math.floor(received / total * 100)) : undefined;
+  return <div className="tbea-preview-progress">
+    <div><span role="status">{label}</span><span>{value === undefined ? `已用 ${elapsedMs === undefined ? seconds : Math.floor(elapsedMs / 1000)} 秒` : `${value}%`}</span></div>
+    <progress aria-label={label} max={100} value={value} />
+  </div>;
+}
 
 function assetUrl(base: string, name: string) {
   const url = new URL(base, document.baseURI);
@@ -22,9 +37,24 @@ export function PdfViewer({ bridge, previewId, bytes, assetPath, restart }: {
   const [documentPdf, setDocumentPdf] = useState<{ pdf: PDFDocumentProxy; disableAnnotations: number }>();
   const [failure, setFailure] = useState('');
   const [attempt, setAttempt] = useState(0);
+  const [firstPageReady, setFirstPageReady] = useState(false);
   const scrollRoot = useRef<HTMLDivElement>(null);
+  const metric = useRef({ started: performance.now(), sent: false });
+  const report = useCallback((status: 'ready' | 'password' | 'invalid-pdf' | 'load-failed' | 'render-failed') => {
+    if (metric.current.sent) return;
+    metric.current.sent = true;
+    void bridge('library-preview-result', { previewId, status, elapsedMs: Math.round(performance.now() - metric.current.started) },
+      AbortSignal.timeout(5000)).catch(() => {});
+  }, [bridge, previewId]);
+  const firstPage = useCallback((error?: string) => {
+    if (metric.current.sent) return;
+    if (error) { setFailure(error); report('render-failed'); }
+    else { setFirstPageReady(true); report('ready'); }
+  }, [report]);
   useEffect(() => {
     const controller = new AbortController();
+    metric.current = { started: performance.now(), sent: false };
+    setFirstPageReady(false);
     setDocumentPdf(undefined);
     setFailure('');
     let loading: PDFDocumentLoadingTask | undefined;
@@ -36,6 +66,8 @@ export function PdfViewer({ bridge, previewId, bytes, assetPath, restart }: {
     const fail = (error: unknown) => {
       if (controller.signal.aborted) return;
       setFailure(pdfError(error));
+      const name = error instanceof Error ? error.name : '';
+      report(name === 'PasswordException' ? 'password' : name === 'InvalidPDFException' ? 'invalid-pdf' : 'load-failed');
       dispose();
     };
 
@@ -67,18 +99,22 @@ export function PdfViewer({ bridge, previewId, bytes, assetPath, restart }: {
     }
     void loadPdf().catch(fail);
     return dispose;
-  }, [bridge, previewId, bytes, assetPath, attempt]);
+  }, [bridge, previewId, bytes, assetPath, attempt, report]);
 
   if (failure) return <div className="tbea-library-state tbea-library-error" role="alert"><span>{failure}</span>
     <button type="button" className="tbea-library-button" onClick={() => failure.includes('预览已过期') ? restart() : setAttempt(value => value + 1)}>重试</button>
   </div>;
-  if (!documentPdf) return <div className="tbea-library-state" role="status">正在加载 PDF…</div>;
-  return <div className="tbea-library-pages" ref={scrollRoot} tabIndex={0} aria-label="PDF 查看器，滚动连续阅读">
-    {Array.from({ length: documentPdf.pdf.numPages }, (_, index) => <PdfPage key={index} {...documentPdf} number={index + 1} root={scrollRoot} />)}
-  </div>;
+  return <>
+    {!firstPageReady && <PreviewMeter label="正在加载首页…" />}
+    {documentPdf && <div className="tbea-library-pages" ref={scrollRoot} tabIndex={0} aria-label="PDF 查看器，滚动连续阅读">
+      {Array.from({ length: firstPageReady ? documentPdf.pdf.numPages : 1 }, (_, index) =>
+        <PdfPage key={index} {...documentPdf} number={index + 1} root={scrollRoot} onFirstPage={index === 0 ? firstPage : undefined} />)}
+    </div>}
+  </>;
 }
 
-function PdfPage({ pdf, disableAnnotations, number, root }: { pdf: PDFDocumentProxy; disableAnnotations: number; number: number; root: RefObject<HTMLDivElement> }) {
+function PdfPage({ pdf, disableAnnotations, number, root, onFirstPage }: { pdf: PDFDocumentProxy; disableAnnotations: number; number: number;
+  root: RefObject<HTMLDivElement>; onFirstPage?: (error?: string) => void }) {
   const element = useRef<HTMLElement>(null);
   const surface = useRef<HTMLCanvasElement>(null);
   const [near, setNear] = useState(number === 1);
@@ -104,12 +140,19 @@ function PdfPage({ pdf, disableAnnotations, number, root }: { pdf: PDFDocumentPr
       task = page.render({ canvas, viewport, annotationMode: disableAnnotations });
       await task.promise;
       page.cleanup();
-    }).catch(failure => { if (!cancelled) setError(pdfError(failure)); });
+      if (!cancelled) onFirstPage?.();
+    }).catch(failure => {
+      if (!cancelled) {
+        const message = pdfError(failure);
+        setError(message);
+        onFirstPage?.(message);
+      }
+    });
     return () => { cancelled = true; task?.cancel(); canvas.width = 0; canvas.height = 0; };
-  }, [near, number, pdf, disableAnnotations]);
+  }, [near, number, pdf, disableAnnotations, onFirstPage]);
   return <figure className="tbea-library-page" ref={element}>
     <div className="tbea-library-sheet" style={{ aspectRatio: ratio }}>
-      {error ? <div className="tbea-library-state tbea-library-error" role="alert">{error}</div> : near && <canvas ref={surface} className="tbea-library-pdf-page" aria-label={`原文第 ${number} 页`} />}
+      {error ? <div className="tbea-library-state tbea-library-error" role="alert">{error}</div> : near && <canvas ref={surface} className="tbea-library-pdf-page" role="img" aria-label={`原文第 ${number} 页`} />}
     </div>
     <figcaption>第 {number} 页</figcaption>
   </figure>;

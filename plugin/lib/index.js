@@ -3264,8 +3264,8 @@ var require_utils = __commonJS({
       }
       return ind;
     }
-    function removeDotSegments(path13) {
-      let input = path13;
+    function removeDotSegments(path14) {
+      let input = path14;
       const output = [];
       let nextSlash = -1;
       let len = 0;
@@ -3339,11 +3339,11 @@ var require_utils = __commonJS({
       }
       return output.join("");
     }
-    function removeDotSegmentsRelative(path13) {
-      if (path13 === "" || path13[0] === "/") {
-        return removeDotSegments(path13);
+    function removeDotSegmentsRelative(path14) {
+      if (path14 === "" || path14[0] === "/") {
+        return removeDotSegments(path14);
       }
-      const segments = path13.split("/");
+      const segments = path14.split("/");
       const last = segments.length - 1;
       const output = [];
       let trailingDirectory = false;
@@ -3706,8 +3706,8 @@ var require_schemes = __commonJS({
       }
       if (wsComponent.resourceName) {
         const queryIndex = wsComponent.resourceName.indexOf("?");
-        const path13 = queryIndex === -1 ? wsComponent.resourceName : wsComponent.resourceName.slice(0, queryIndex);
-        wsComponent.path = path13 && path13 !== "/" ? path13 : void 0;
+        const path14 = queryIndex === -1 ? wsComponent.resourceName : wsComponent.resourceName.slice(0, queryIndex);
+        wsComponent.path = path14 && path14 !== "/" ? path14 : void 0;
         wsComponent.query = queryIndex === -1 ? void 0 : wsComponent.resourceName.slice(queryIndex + 1);
         wsComponent.resourceName = void 0;
       }
@@ -7244,12 +7244,12 @@ var require_dist = __commonJS({
         throw new Error(`Unknown format "${name3}"`);
       return f;
     };
-    function addFormats(ajv, list3, fs10, exportName) {
+    function addFormats(ajv, list3, fs11, exportName) {
       var _a5;
       var _b;
       (_a5 = (_b = ajv.opts.code).formats) !== null && _a5 !== void 0 ? _a5 : _b.formats = (0, codegen_1._)`require("ajv-formats/dist/formats").${exportName}`;
       for (const f of list3)
-        ajv.addFormat(f, fs10[f]);
+        ajv.addFormat(f, fs11[f]);
     }
     module.exports = exports = formatsPlugin;
     Object.defineProperty(exports, "__esModule", { value: true });
@@ -19680,9 +19680,9 @@ var require_message_splitter = __commonJS({
         let flush = false;
         let truncatedLine = this.pendingLineTruncated;
         this.pendingLineTruncated = false;
-        let pending = this.takePendingLine();
-        if (pending) {
-          line = line ? Buffer.concat([pending, line]) : pending;
+        let pending2 = this.takePendingLine();
+        if (pending2) {
+          line = line ? Buffer.concat([pending2, line]) : pending2;
         }
         if (!line) {
           line = Buffer.alloc(0);
@@ -22222,7 +22222,7 @@ var require_punycode = __commonJS({
 });
 
 // plugin/src/host.mjs
-import path12 from "node:path";
+import path13 from "node:path";
 import { fileURLToPath as fileURLToPath3 } from "node:url";
 import { AsyncLocalStorage } from "node:async_hooks";
 
@@ -22463,10 +22463,10 @@ function mergeDefs(...defs) {
 function cloneDef(schema) {
   return mergeDefs(schema._zod.def);
 }
-function getElementAtPath(obj, path13) {
-  if (!path13)
+function getElementAtPath(obj, path14) {
+  if (!path14)
     return obj;
-  return path13.reduce((acc, key) => acc?.[key], obj);
+  return path14.reduce((acc, key) => acc?.[key], obj);
 }
 function promiseAllObject(promisesObj) {
   const keys = Object.keys(promisesObj);
@@ -22806,11 +22806,11 @@ function explicitlyAborted(x, startIndex = 0) {
   }
   return false;
 }
-function prefixIssues(path13, issues) {
+function prefixIssues(path14, issues) {
   return issues.map((iss) => {
     var _a5;
     (_a5 = iss).path ?? (_a5.path = []);
-    iss.path.unshift(path13);
+    iss.path.unshift(path14);
     return iss;
   });
 }
@@ -23271,16 +23271,16 @@ function flattenError(error3, mapper = (issue2) => issue2.message) {
 }
 function formatError(error3, mapper = (issue2) => issue2.message) {
   const fieldErrors = { _errors: [] };
-  const processError = (error4, path13 = []) => {
+  const processError = (error4, path14 = []) => {
     for (const issue2 of error4.issues) {
       if (issue2.code === "invalid_union" && issue2.errors.length) {
-        issue2.errors.map((issues) => processError({ issues }, [...path13, ...issue2.path]));
+        issue2.errors.map((issues) => processError({ issues }, [...path14, ...issue2.path]));
       } else if (issue2.code === "invalid_key") {
-        processError({ issues: issue2.issues }, [...path13, ...issue2.path]);
+        processError({ issues: issue2.issues }, [...path14, ...issue2.path]);
       } else if (issue2.code === "invalid_element") {
-        processError({ issues: issue2.issues }, [...path13, ...issue2.path]);
+        processError({ issues: issue2.issues }, [...path14, ...issue2.path]);
       } else {
-        const fullpath = [...path13, ...issue2.path];
+        const fullpath = [...path14, ...issue2.path];
         if (fullpath.length === 0) {
           fieldErrors._errors.push(mapper(issue2));
         } else {
@@ -27589,13 +27589,13 @@ var recordProcessor = (schema, ctx, _json, params) => {
         ...params,
         path: [...params.path, "propertyNames"]
       });
-      let pending = pendingRecords.get(ctx);
-      if (!pending) {
-        pending = [];
-        pendingRecords.set(ctx, pending);
+      let pending2 = pendingRecords.get(ctx);
+      if (!pending2) {
+        pending2 = [];
+        pendingRecords.set(ctx, pending2);
         ctx.deferred.push(() => rewriteKeyNames(ctx));
       }
-      pending.push(schema);
+      pending2.push(schema);
     }
     json2.additionalProperties = processSchema(def.valueType, ctx, {
       ...params,
@@ -33837,6 +33837,56 @@ var StreamableHTTPClientTransport = class {
 
 // src/knowledge.ts
 import { randomUUID as randomUUID3 } from "node:crypto";
+
+// src/diagnostics.ts
+import fs from "node:fs/promises";
+import path from "node:path";
+
+// src/contracts.ts
+function isRecord(value) {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+function hasCode(error3, code2) {
+  return isRecord(error3) && error3.code === code2;
+}
+function previewEnabled(settings) {
+  return settings?.enabled === true && settings.allowPdfViewer !== false;
+}
+function isImageType(value) {
+  return value === "image/png" || value === "image/jpeg" || value === "image/webp" || value === "image/gif";
+}
+
+// src/diagnostics.ts
+var maxLogBytes = 10 * 1024 * 1024;
+var pending = /* @__PURE__ */ new Map();
+function diagnosticFilename(config2) {
+  return path.join(config2.diagnosticsDirectory ?? path.join(config2.dataDirectory, "logs"), "dsh-mcp-tbea-knowledge.jsonl");
+}
+function diagnosticErrorCode(error3) {
+  if (isRecord(error3) && typeof error3.code === "string" && /^[A-Z][A-Z0-9_]{0,63}$/.test(error3.code)) return error3.code;
+  if (error3 instanceof Error && error3.name === "AbortError") return "ABORTED";
+  if (error3 instanceof Error && error3.name === "TimeoutError") return "TIMEOUT";
+  return "UNKNOWN_ERROR";
+}
+function appendDiagnostic(config2, event) {
+  const filename = diagnosticFilename(config2);
+  const line = JSON.stringify({ time: (/* @__PURE__ */ new Date()).toISOString(), ...event }) + "\n";
+  const next = (pending.get(filename) ?? Promise.resolve()).then(async () => {
+    await fs.mkdir(path.dirname(filename), { recursive: true, mode: 448 });
+    const size = await fs.stat(filename).then((stat) => stat.size).catch((error3) => {
+      if (!hasCode(error3, "ENOENT")) throw error3;
+      return 0;
+    });
+    if (size && size + Buffer.byteLength(line) > maxLogBytes) await fs.rename(filename, filename + ".1");
+    await fs.appendFile(filename, line, { encoding: "utf8", mode: 384 });
+  }).catch((error3) => {
+    console.warn(`\u77E5\u8BC6\u5E93\u8BCA\u65AD\u65E5\u5FD7\u5199\u5165\u5931\u8D25\uFF08${diagnosticErrorCode(error3)}\uFF09`);
+  });
+  pending.set(filename, next);
+  return next.finally(() => {
+    if (pending.get(filename) === next) pending.delete(filename);
+  });
+}
 
 // src/normalize.ts
 import { createHash as createHash2 } from "node:crypto";
@@ -49919,7 +49969,7 @@ var domain = {
   tokenize: tokenizeDomain,
   partial: true
 };
-var path = {
+var path2 = {
   tokenize: tokenizePath,
   partial: true
 };
@@ -50025,7 +50075,7 @@ function tokenizeWwwAutolink(effects, ok3, nok) {
     }
     effects.enter("literalAutolink");
     effects.enter("literalAutolinkWww");
-    return effects.check(wwwPrefix, effects.attempt(domain, effects.attempt(path, wwwAfter), nok), nok)(code2);
+    return effects.check(wwwPrefix, effects.attempt(domain, effects.attempt(path2, wwwAfter), nok), nok)(code2);
   }
   function wwwAfter(code2) {
     effects.exit("literalAutolinkWww");
@@ -50075,7 +50125,7 @@ function tokenizeProtocolAutolink(effects, ok3, nok) {
     return nok(code2);
   }
   function afterProtocol(code2) {
-    return code2 === null || asciiControl(code2) || markdownLineEndingOrSpace(code2) || unicodeWhitespace(code2) || unicodePunctuation(code2) ? nok(code2) : effects.attempt(domain, effects.attempt(path, protocolAfter), nok)(code2);
+    return code2 === null || asciiControl(code2) || markdownLineEndingOrSpace(code2) || unicodeWhitespace(code2) || unicodePunctuation(code2) ? nok(code2) : effects.attempt(domain, effects.attempt(path2, protocolAfter), nok)(code2);
   }
   function protocolAfter(code2) {
     effects.exit("literalAutolinkHttp");
@@ -51929,7 +51979,7 @@ function transformGfmAutolinkLiterals(tree) {
     { ignore: ["link", "linkReference"] }
   );
 }
-function findUrl(_, protocol, domain2, path13, match2) {
+function findUrl(_, protocol, domain2, path14, match2) {
   let prefix = "";
   if (!previous2(match2)) {
     return false;
@@ -51942,7 +51992,7 @@ function findUrl(_, protocol, domain2, path13, match2) {
   if (!isCorrectDomain(domain2)) {
     return false;
   }
-  const parts = splitUrl(domain2 + path13);
+  const parts = splitUrl(domain2 + path14);
   if (!parts[0]) return false;
   const result = {
     type: "link",
@@ -52230,17 +52280,6 @@ function gfmFromMarkdown() {
   ];
 }
 
-// src/contracts.ts
-function isRecord(value) {
-  return value !== null && typeof value === "object" && !Array.isArray(value);
-}
-function hasCode(error3, code2) {
-  return isRecord(error3) && error3.code === code2;
-}
-function isImageType(value) {
-  return value === "image/png" || value === "image/jpeg" || value === "image/webp" || value === "image/gif";
-}
-
 // src/evidence.ts
 var words = new Intl.Segmenter("zh-CN", { granularity: "word" });
 var regionsZh = new Intl.DisplayNames("zh-CN", { type: "region", fallback: "none" });
@@ -52250,7 +52289,9 @@ for (let first2 = 65; first2 <= 90; first2++) {
   for (let second = 65; second <= 90; second++) {
     const code2 = String.fromCharCode(first2, second);
     const names = [regionsZh.of(code2), regionsEn.of(code2)].filter((name3) => Boolean(name3));
-    if (names.length) regions.set(code2, names.map((name3) => normalize(name3)));
+    if (!names.length) continue;
+    const canonical2 = new Intl.Locale(`und-${code2}`).region ?? code2;
+    regions.set(canonical2, [.../* @__PURE__ */ new Set([...regions.get(canonical2) ?? [], ...names.map(normalize)])]);
   }
 }
 var filler = new Set("\u8BF7\u95EE \u5E2E\u6211 \u8BF7\u5E2E \u6839\u636E \u5173\u4E8E \u76F8\u5173 \u6709\u5173 \u516C\u53F8 \u672C\u516C\u53F8 \u80A1\u4EFD \u672C\u5730 \u5185\u90E8 \u77E5\u8BC6\u5E93 \u6587\u6863 \u8D44\u6599 \u4FE1\u606F \u5185\u5BB9 \u6761\u6B3E \u4F9D\u636E \u4E00\u822C \u901A\u5E38 \u5E38\u89C1 \u53EF\u80FD \u5177\u4F53 \u5BF9\u5E94 \u5730\u533A \u56FD\u5BB6 \u54EA\u4E9B \u4EC0\u4E48 \u591A\u5C11 \u600E\u4E48 \u5982\u4F55 \u662F\u5426 \u4E3A\u4F55 \u4E3A\u4EC0\u4E48 \u600E\u6837 \u9700\u8981 \u8981\u6C42 \u89C4\u5B9A \u6709\u54EA\u4E9B \u591A\u5927 \u4ECA\u5929 \u4EE5\u53CA \u53CA\u5176 \u6216\u8005 \u8FD8\u6709 \u5E76\u4E14 \u540C\u65F6 what which how many much the is are was of in for to on please average typical".split(" "));
@@ -52265,6 +52306,12 @@ var amount = /上限|限额|标准|最多|封顶|多少/u;
 var process2 = /流程|步骤|申请|审批|凭证|发票|办理|提交|填写/u;
 var vendor = /供应商|采购|应付账款/u;
 var accounts = /入账|账务|记账|会计凭证/u;
+var cadre = /(?<!非)(?:中干|中层干部|中层管理(?:人员|干部))/u;
+var allowances = /补贴|补助|津贴/u;
+var cityBand = /城市(?:类别|分类|档次)|省会(?:城市)?|[一二三四]类城市/u;
+var travelAmount = /(?:\d+(?:\.\d+)?|[一二三四五六七八九十百千零]+)\s*元|[¥￥]\s*\d/u;
+var temperatureDevice = /光纤(?:测温|温度测量)/u;
+var composition = /由[^。！？\n]{1,220}(?:组成|构成)|(?:组成部分|基本构成|结构组成|组成包括)\s*[:：包括为有]/u;
 function businessIntent(query) {
   if (partObject.test(query)) {
     const state = /未创建|没有创建|没创建|尚未创建/u.test(query) ? /未创建|没有创建|没创建|尚未创建|变型件未创建/u : /正在工作|未发布/u.test(query) ? /正在工作|未发布/u : /没有配置|未找到|未查找到/u.test(query) ? /没有配置|未找到|未查找到/u : void 0;
@@ -52279,6 +52326,34 @@ function businessIntent(query) {
       canonical: "\u4F9B\u5E94\u5546\u53D1\u7968\u5165\u8D26",
       libraryHint: /供应商结算|财务入账|会计核算|应付账款/u,
       verify: (body) => vendor.test(body) && accounts.test(body) && /发票|财务|会计/u.test(body) ? "direct" : void 0
+    };
+  }
+  if (temperatureDevice.test(query) && /变压器|绕组/u.test(query) && /构成|组成|几个部分/u.test(query)) {
+    const product = /绕组/u.test(query) ? /绕组/u : /变压器/u;
+    return {
+      canonical: "\u53D8\u538B\u5668 \u7ED5\u7EC4 \u5149\u7EA4\u6D4B\u6E29\u88C5\u7F6E \u7EC4\u6210 \u6784\u6210",
+      libraryHint: /企业标准|光纤测温|变压器|技术标准/u,
+      verify: (body, title) => {
+        const source = `${title}
+${body}`;
+        return temperatureDevice.test(source) && product.test(source) && composition.test(body) ? "direct" : void 0;
+      }
+    };
+  }
+  if (travelObject.test(query) && cadre.test(query) && /长沙/u.test(query) && allowances.test(query)) {
+    const category = /伙食|误餐/u.test(query) ? /伙食|误餐|餐费/u : /交通/u.test(query) ? /市内交通|交通补贴|交通补助/u : lodging.test(query) ? lodging : /伙食|餐费|住宿|市内交通|交通补贴|交通补助|差旅补[贴助]/u;
+    return {
+      canonical: "\u4E2D\u5C42\u5E72\u90E8 \u957F\u6C99 \u5DEE\u65C5\u8D39 \u4F19\u98DF\u8865\u52A9 \u5E02\u5185\u4EA4\u901A\u8D39 \u57CE\u5E02\u7C7B\u522B",
+      libraryHint: /差旅|出差|费用报销/u,
+      verify: (body, title) => {
+        if (!travelObject.test(`${title}
+${body}`)) return;
+        const rows = body.split(/[。；;\n]/u);
+        if (rows.some((row) => (row.includes("\u957F\u6C99") || title.includes("\u957F\u6C99")) && (cadre.test(row) || cadre.test(title)) && category.test(row) && travelAmount.test(row))) return "direct";
+        const hasPolicy = rows.some((row) => (cadre.test(row) || cadre.test(title)) && category.test(row));
+        const hasCityBand = rows.some((row) => row.includes("\u957F\u6C99") && cityBand.test(row));
+        if (hasPolicy || hasCityBand) return "related";
+      }
     };
   }
   if (travelObject.test(query) && expense.test(query)) {
@@ -52430,11 +52505,11 @@ function checkEvidence(query, synonyms = []) {
   function compatible({ text: text6, documentName, documentVersion, effectiveDate }) {
     const rawBody = normalize(text6);
     const body = active.some((rule) => rule.context.some((term) => contains(rawBody, term))) ? replaceAliases(rawBody) : rawBody;
-    if (!body || clarification) return { body, indices: [] };
+    if (!body || clarification) return { body, title: "", indices: [] };
     const title = normalize(documentName);
     const source = title + "\n" + body;
     if (day && effectiveDate !== day || year && ![documentVersion, effectiveDate, title].some((value) => value?.includes(year)) && !source.match(new RegExp(year + "(?:\u5E74)?(?:\u7248|\u4FEE\u8BA2|\u751F\u6548)|(?:\u751F\u6548\u65E5\u671F|\u7248\u672C)\\s*[:\uFF1A]?\\s*" + year, "u"))) {
-      return { body, indices: [] };
+      return { body, title, indices: [] };
     }
     const actualStandards = standards.length ? standardRefs(source) : [];
     const indices = topics.flatMap((topic, index2) => {
@@ -52443,10 +52518,10 @@ function checkEvidence(query, synonyms = []) {
       if (standard && !actualStandards.some((actual) => actual.id === standard.id && (!standard.year || actual.year === standard.year))) return [];
       return [index2];
     });
-    return { body, indices: topics.length ? indices : [0] };
+    return { body, title, indices: topics.length ? indices : [0] };
   }
   function evaluate(item) {
-    const { body, indices } = compatible(item);
+    const { body, title, indices } = compatible(item);
     if (!body) return { topics: [], directTopics: [], quality: 0, reason: "empty-text" };
     const exactMatch = exact.length >= 4 && compact(body).includes(exact);
     const accepted = [];
@@ -52455,7 +52530,7 @@ function checkEvidence(query, synonyms = []) {
       const topic = topics[index2];
       if (!topic) continue;
       if (topic.intent) {
-        const match2 = topic.intent.verify(body);
+        const match2 = topic.intent.verify(body, title);
         if (!match2) continue;
         if (match2 === "direct") directTopics.push(index2);
       } else {
@@ -52490,10 +52565,10 @@ function checkEvidence(query, synonyms = []) {
     clarification,
     // Known business anchors also keep a semantic decision from upgrading a different procedure.
     semanticTopics: (item) => {
-      const { body, indices } = compatible(item);
+      const { body, title, indices } = compatible(item);
       return indices.filter((index2) => {
         const intent = topics[index2]?.intent;
-        return !intent || intent.verify(body) === "direct";
+        return !intent || intent.verify(body, title) === "direct";
       });
     },
     confident: (item) => {
@@ -52735,6 +52810,7 @@ function modelResult(snapshot, maxCharacters, citations = snapshot.citations, th
   const decisions = [];
   const projected = citations.flatMap((c) => {
     const text6 = c.modelText.slice(0, remaining);
+    let supportingContext = false;
     if (evidence) {
       if (clarification || evidenceScore(c.source.rank_score) < threshold) return [];
       const input = { ...c, text: text6 };
@@ -52743,6 +52819,7 @@ function modelResult(snapshot, maxCharacters, citations = snapshot.citations, th
       const topics = proof?.topics.filter((topic) => scoped.includes(topic)) ?? [];
       const decision = proof && topics.length ? { ...proof, topics, directTopics: topics } : evidence.evaluate(input);
       if (!decision.topics.length) return [];
+      supportingContext = !decision.directTopics.length;
       decisions.push(decision);
     }
     remaining -= text6.length;
@@ -52752,6 +52829,7 @@ function modelResult(snapshot, maxCharacters, citations = snapshot.citations, th
       documentName: c.documentName,
       chunkId: c.chunkId,
       page: c.page,
+      ...supportingContext ? { support: "related" } : {},
       documentVersion: c.documentVersion,
       effectiveDate: c.effectiveDate,
       text: text6,
@@ -52766,6 +52844,7 @@ function modelResult(snapshot, maxCharacters, citations = snapshot.citations, th
   if (clarification) notice += clarification;
   else if (assessment?.status === "none") notice += "\u672C\u6B21\u672A\u627E\u5230\u80FD\u652F\u6301\u95EE\u9898\u7684\u516C\u53F8\u8D44\u6599\u3002\u660E\u786E\u8BF4\u660E\u4F9D\u636E\u4E0D\u8DB3\uFF0C\u4E0D\u628A\u901A\u7528\u77E5\u8BC6\u5F53\u4F5C\u516C\u53F8\u89C4\u5B9A\u3002";
   if (assessment?.status === "partial") notice += "\u90E8\u5206\u4E8B\u9879\u7F3A\u5C11\u516C\u53F8\u8D44\u6599\u3002\u4EC5\u56DE\u7B54\u6709\u76F4\u63A5\u4F9D\u636E\u7684\u90E8\u5206\uFF0C\u5E76\u660E\u786E\u5217\u51FA\u7F3A\u5C11\u4F9D\u636E\u7684\u4E8B\u9879\u3002";
+  if (projected.some((c) => c.support === "related")) notice += "\u6807\u8BB0\u4E3A related \u7684\u5207\u7247\u53EA\u63D0\u4F9B\u80CC\u666F\u6216\u9002\u7528\u8303\u56F4\u7EBF\u7D22\u3002\u5F15\u7528\u5177\u4F53\u6807\u51C6\u6216\u91D1\u989D\u524D\uFF0C\u987B\u6838\u5BF9\u9002\u7528\u6761\u4EF6\u6709\u76F4\u63A5\u4F9D\u636E\u3002";
   if (assessment?.status === "not_needed") notice = "\u6B64\u95EE\u9898\u662F\u72EC\u7ACB\u7B97\u672F\u9898\uFF0C\u65E0\u9700\u516C\u53F8\u77E5\u8BC6\u5E93\uFF0C\u8BF7\u76F4\u63A5\u8BA1\u7B97\u56DE\u7B54\u3002";
   return {
     schema: "tbea-knowledge/v1",
@@ -52783,16 +52862,16 @@ function modelResult(snapshot, maxCharacters, citations = snapshot.citations, th
 }
 
 // src/store.ts
-import fs2 from "node:fs/promises";
-import path3 from "node:path";
+import fs3 from "node:fs/promises";
+import path4 from "node:path";
 import { randomUUID as randomUUID2 } from "node:crypto";
 
 // src/platform.ts
 import { createHash as createHash3, randomUUID } from "node:crypto";
 
 // src/config.ts
-import fs from "node:fs/promises";
-import path2 from "node:path";
+import fs2 from "node:fs/promises";
+import path3 from "node:path";
 var PLATFORM_ORIGIN = "https://ai.tbea.com";
 var PLATFORM_SEARCH_PATH = "/openapi/v1/knowledgeBase?Action=QueryKnowledge";
 var PLATFORM_LIST_PATH = "/api/ai_apaas/v1/knowledgeBase?Action=DescribeKnowledgeBases";
@@ -52810,10 +52889,10 @@ function parseConfigJson(contents) {
   return config2;
 }
 async function readConfig(filename, options) {
-  return validateConfig(parseConfigJson(await fs.readFile(filename, "utf8")), filename, options);
+  return validateConfig(parseConfigJson(await fs2.readFile(filename, "utf8")), filename, options);
 }
 async function validateConfig(config2, filename, options = {}) {
-  const directoryPath = path2.dirname(path2.resolve(filename));
+  const directoryPath = path3.dirname(path3.resolve(filename));
   const service = config2.service;
   if (service !== void 0 && !isRecord(service)) throw new Error("service \u5FC5\u987B\u4E3A\u5BF9\u8C61");
   const autoStart = service?.autoStart;
@@ -52843,7 +52922,7 @@ async function validateConfig(config2, filename, options = {}) {
   if ((mode === "mock" || directoryMode === "static") && !knowledgeBases.length) throw new Error("\u6F14\u793A\u6216\u9759\u6001\u6A21\u5F0F\u9700\u8981\u914D\u7F6E\u81F3\u5C11\u4E00\u4E2A\u77E5\u8BC6\u5E93");
   if (mode === "live" && directoryMode === "static" && knowledgeBases.some((k) => k.id.startsWith("demo-"))) throw new Error("\u6B63\u5F0F\u9759\u6001\u6A21\u5F0F\u4E0D\u80FD\u4F7F\u7528\u6F14\u793A\u77E5\u8BC6\u5E93 ID");
   if (config2.dataDirectory && typeof config2.dataDirectory !== "string") throw new Error("dataDirectory \u5FC5\u987B\u4E3A\u76EE\u5F55\u8DEF\u5F84");
-  const dataDirectory = path2.resolve(directoryPath, typeof config2.dataDirectory === "string" && config2.dataDirectory ? config2.dataDirectory : options.defaultDataDirectory ?? "../data");
+  const dataDirectory = path3.resolve(directoryPath, typeof config2.dataDirectory === "string" && config2.dataDirectory ? config2.dataDirectory : options.defaultDataDirectory ?? "../data");
   const limits = { top: 10, maxEvidenceChunks: 5, maxQueryCharacters: 1024, maxTextCharacters: 3e4, maxImageBytes: 15 * 1024 * 1024, maxCacheBytes: 512 * 1024 * 1024, maxSnapshots: 500, ...isRecord(config2.limits) ? config2.limits : {} };
   for (const [key, value] of Object.entries(limits)) if (!Number.isSafeInteger(value) || value < 1) throw new Error(`limits.${key} \u5FC5\u987B\u4E3A\u6B63\u6574\u6570`);
   if (limits.top > 20 || limits.maxEvidenceChunks > 20 || limits.maxSnapshots > 1e4 || limits.maxQueryCharacters > 1024) throw new Error("\u68C0\u7D22\u6570\u91CF\u3001\u5FEB\u7167\u6570\u91CF\u6216 query \u957F\u5EA6\u8D85\u8FC7\u9650\u5236");
@@ -52870,6 +52949,7 @@ async function validateConfig(config2, filename, options = {}) {
     knowledgeBases,
     dataDirectory,
     limits,
+    diagnosticsDirectory: options.defaultDiagnosticsDirectory ?? path3.join(dataDirectory, "logs"),
     retrieval: {
       ...retrieval,
       evidenceScoreThreshold: evidenceThreshold,
@@ -52913,7 +52993,7 @@ function readSynonyms(value) {
     return { term: item.term.trim(), aliases: words2(item.aliases), context: words2(item.context) };
   });
 }
-async function readDocumentPreview(value, directory, { bundledPopplerBin, bundledOffice }) {
+async function readDocumentPreview(value, directory, { bundledOffice }) {
   if (value === void 0) return void 0;
   if (!isRecord(value) || typeof value.enabled !== "boolean") throw new Error("documentPreview.enabled \u5FC5\u987B\u4E3A true \u6216 false");
   const { allowPdfViewer } = value;
@@ -52921,45 +53001,28 @@ async function readDocumentPreview(value, directory, { bundledPopplerBin, bundle
   function program(input, key) {
     if (input === void 0 || input === "") return void 0;
     if (typeof input !== "string" || !input.trim()) throw new Error(`documentPreview.${key} \u5FC5\u987B\u4E3A\u7A0B\u5E8F\u8DEF\u5F84`);
-    return path2.resolve(directory, input);
+    return path3.resolve(directory, input);
   }
-  const { pdfInfo, pdfToPpm, office } = value;
+  const { office } = value;
   const converters = {};
   if (value.converters !== void 0 && !isRecord(value.converters)) throw new Error("documentPreview.converters \u5FC5\u987B\u4E3A\u5BF9\u8C61");
   for (const [format, input] of Object.entries(value.converters ?? {})) {
     if (!/^[a-z0-9]{2,8}$/.test(format)) throw new Error("\u8F6C\u6362\u7EC4\u4EF6\u952E\u5FC5\u987B\u4E3A\u5C0F\u5199\u6587\u4EF6\u6269\u5C55\u540D\uFF0C\u4F8B\u5982 ofd");
     converters[format] = program(input, `converters.${format}`);
   }
-  let info = program(pdfInfo, "pdfInfo");
-  let ppm = program(pdfToPpm, "pdfToPpm");
   let officeProgram = program(office, "office");
   let officeBundled;
-  if (value.enabled && process.platform === "win32") {
-    const legacyBin = path2.resolve(directory, "../tools/poppler/Library/bin");
-    const offlineBin = path2.resolve(directory, "../plugin/tools/poppler/Library/bin");
-    async function bundledProgram(name3, configured, original) {
-      const legacyDefault = !bundledPopplerBin && typeof original === "string" && !path2.isAbsolute(original) && configured === path2.join(legacyBin, name3);
-      if (configured && !legacyDefault) return configured;
-      for (const bin of bundledPopplerBin ? [bundledPopplerBin] : [legacyBin, offlineBin]) {
-        const filename = path2.join(bin, name3);
-        if ((await fs.stat(filename).catch(() => void 0))?.isFile()) return filename;
-      }
-      return configured;
-    }
-    [info, ppm] = await Promise.all([bundledProgram("pdfinfo.exe", info, pdfInfo), bundledProgram("pdftoppm.exe", ppm, pdfToPpm)]);
-    if (!officeProgram) {
-      const relative = "tools/libreoffice/program/soffice.com";
-      for (const candidate of bundledOffice ? [bundledOffice] : [path2.resolve(directory, "../plugin", relative), path2.resolve(directory, "..", relative)]) {
-        if ((await fs.stat(candidate).catch(() => void 0))?.isFile()) {
-          officeProgram = candidate;
-          officeBundled = true;
-          break;
-        }
+  if (value.enabled && allowPdfViewer !== false && !officeProgram && process.platform === "win32") {
+    const relative = "tools/libreoffice/program/soffice.com";
+    for (const candidate of bundledOffice ? [bundledOffice] : [path3.resolve(directory, "../plugin", relative), path3.resolve(directory, "..", relative)]) {
+      if ((await fs2.stat(candidate).catch(() => void 0))?.isFile()) {
+        officeProgram = candidate;
+        officeBundled = true;
+        break;
       }
     }
   }
-  if (value.enabled && (!info || !ppm)) throw new Error("\u542F\u7528\u6B63\u5F0F\u539F\u6587\u9884\u89C8\u9700\u8981\u914D\u7F6E pdfInfo \u548C pdfToPpm");
-  return { enabled: value.enabled, allowPdfViewer, pdfInfo: info, pdfToPpm: ppm, office: officeProgram, officeBundled, converters };
+  return { enabled: value.enabled, allowPdfViewer: allowPdfViewer ?? true, office: officeProgram, officeBundled, converters };
 }
 function readPlatform(raw, mode) {
   function routeFor(key, fallback) {
@@ -53171,7 +53234,7 @@ var Store = class {
     this.limits = config2.limits;
   }
   async init() {
-    await fs2.mkdir(this.root, { recursive: true });
+    await fs3.mkdir(this.root, { recursive: true });
   }
   async transaction(task) {
     const next = this.queue.then(task);
@@ -53182,9 +53245,9 @@ var Store = class {
   async usage() {
     let bytes = 0;
     let snapshots = 0;
-    for (const entry of await fs2.readdir(this.root, { withFileTypes: true })) {
+    for (const entry of await fs3.readdir(this.root, { withFileTypes: true })) {
       if (!entry.isFile() || !/\.(json|bin)$/.test(entry.name)) continue;
-      bytes += (await fs2.stat(path3.join(this.root, entry.name))).size;
+      bytes += (await fs3.stat(path4.join(this.root, entry.name))).size;
       if (UUID.test(entry.name.slice(0, -5))) snapshots += 1;
     }
     return { bytes, snapshots };
@@ -53192,18 +53255,18 @@ var Store = class {
   async write(name3, bytes, snapshot = false, signal) {
     return this.transaction(async () => {
       signal?.throwIfAborted();
-      const destination = path3.join(this.root, name3);
-      const existing = await fs2.stat(destination).catch(() => null);
+      const destination = path4.join(this.root, name3);
+      const existing = await fs3.stat(destination).catch(() => null);
       const usage = await this.usage();
       if (snapshot && !existing && usage.snapshots >= this.limits.maxSnapshots) throw new PlatformError("CACHE_FULL", "\u5386\u53F2\u5FEB\u7167\u8FBE\u5230\u4E0A\u9650\uFF0C\u8BF7\u5907\u4EFD\u540E\u6E05\u7406\u6216\u589E\u52A0 maxSnapshots");
       if (usage.bytes - (existing?.size || 0) + bytes.length > this.limits.maxCacheBytes) throw new PlatformError("CACHE_FULL", "\u672C\u5730\u77E5\u8BC6\u7F13\u5B58\u5DF2\u6EE1\uFF0C\u8BF7\u5907\u4EFD\u6E05\u7406\u6216\u589E\u52A0 maxCacheBytes");
       const temporary = `${destination}.${randomUUID2()}.tmp`;
       try {
-        await fs2.writeFile(temporary, bytes, { signal });
+        await fs3.writeFile(temporary, bytes, { signal });
         signal?.throwIfAborted();
-        await fs2.rename(temporary, destination);
+        await fs3.rename(temporary, destination);
       } finally {
-        await fs2.unlink(temporary).catch(() => {
+        await fs3.unlink(temporary).catch(() => {
         });
       }
     });
@@ -53215,7 +53278,7 @@ var Store = class {
   async load(snapshotId) {
     const id = requireSnapshotId(snapshotId);
     try {
-      const value = JSON.parse(await fs2.readFile(path3.join(this.root, `${id}.json`), "utf8"));
+      const value = JSON.parse(await fs3.readFile(path4.join(this.root, `${id}.json`), "utf8"));
       if (!hasSnapshotShape(value, id)) throw new PlatformError("INVALID_SNAPSHOT_CONTENT", "\u5386\u53F2\u8D44\u6599\u683C\u5F0F\u65E0\u6548\uFF0C\u8BF7\u68C0\u67E5\u539F\u59CB\u5FEB\u7167\u6216\u5907\u4EFD");
       return value;
     } catch (error3) {
@@ -53227,9 +53290,9 @@ var Store = class {
   async image(id) {
     requireImageId(id);
     try {
-      const metadata = JSON.parse(await fs2.readFile(path3.join(this.root, `${id}.image.json`), "utf8"));
+      const metadata = JSON.parse(await fs3.readFile(path4.join(this.root, `${id}.image.json`), "utf8"));
       if (!isRecord(metadata) || !isImageType(metadata.type)) return null;
-      return { type: metadata.type, bytes: await fs2.readFile(path3.join(this.root, `${id}.bin`)) };
+      return { type: metadata.type, bytes: await fs3.readFile(path4.join(this.root, `${id}.bin`)) };
     } catch (error3) {
       if (hasCode(error3, "ENOENT") || error3 instanceof SyntaxError) return null;
       throw error3;
@@ -53807,7 +53870,7 @@ var KnowledgeService = class {
     signal?.throwIfAborted();
     await this.store.save(snapshot, signal);
     signal?.throwIfAborted();
-    if (settings.diagnostics && live) console.info(JSON.stringify({
+    if (settings.diagnostics && live) await appendDiagnostic(this.config, {
       event: "tbea-retrieval",
       searchId: id,
       threshold,
@@ -53817,7 +53880,7 @@ var KnowledgeService = class {
       topics: evidence?.diagnosticTopics,
       semantic,
       ms: Math.round(performance.now() - started)
-    }));
+    });
     return this.result(snapshot);
   }
   evidenceThreshold() {
@@ -53914,13 +53977,13 @@ var KnowledgeService = class {
 };
 
 // src/pdf-preview.ts
-import fs3 from "node:fs/promises";
-import path4 from "node:path";
+import fs4 from "node:fs/promises";
+import path5 from "node:path";
 async function pdfViewerAsset(root, name3) {
   if (!name3 || !["pdf.mjs", "pdf.worker.mjs"].includes(name3) && !/^(?:cmaps|standard_fonts|wasm)\/[a-zA-Z0-9][a-zA-Z0-9_.-]*$/u.test(name3)) {
     return new Response(null, { status: 404 });
   }
-  const bytes = await fs3.readFile(path4.join(root, name3)).catch((error3) => {
+  const bytes = await fs4.readFile(path5.join(root, name3)).catch((error3) => {
     if (error3.code !== "ENOENT") throw error3;
   });
   if (!bytes) return new Response(null, { status: 404 });
@@ -53964,38 +54027,34 @@ ${xref}
 }
 
 // src/desktop-config.ts
-import path5 from "node:path";
+import path6 from "node:path";
 var DESKTOP_CONFIG = "dsh-mcp-tbea-knowledge.json";
 var DESKTOP_DEPLOYMENT_CONFIG = "desktop-deployment.json";
 var DESKTOP_CONFIG_TEMPLATE = "config/example.json";
 function desktopConfigLocations(harnessHome, packageRoot) {
-  if (!harnessHome || !path5.isAbsolute(harnessHome)) {
+  if (!harnessHome || !path6.isAbsolute(harnessHome)) {
     throw new Error("\u65E0\u6CD5\u5B9A\u4F4D\u5320\u5B9D Harness \u76EE\u5F55\uFF0C\u8BF7\u68C0\u67E5 DSH_HOME \u6216\u6307\u5B9A Harness \u7684\u7EDD\u5BF9\u8DEF\u5F84");
   }
   return {
-    filename: path5.join(harnessHome, DESKTOP_CONFIG),
+    filename: path6.join(harnessHome, DESKTOP_CONFIG),
     options: {
-      bundledPopplerBin: path5.join(packageRoot, "tools", "poppler", "Library", "bin"),
-      bundledOffice: path5.join(packageRoot, "tools", "libreoffice", "program", "soffice.com"),
-      defaultDataDirectory: path5.join(harnessHome, "dsh-mcp-tbea-knowledge-data")
+      bundledOffice: path6.join(packageRoot, "tools", "libreoffice", "program", "soffice.com"),
+      defaultDataDirectory: path6.join(harnessHome, "dsh-mcp-tbea-knowledge-data"),
+      defaultDiagnosticsDirectory: path6.join(harnessHome, "logs")
     }
   };
 }
 
 // src/desktop-initialization.ts
-import fs4 from "node:fs/promises";
-import path6 from "node:path";
+import fs5 from "node:fs/promises";
+import path7 from "node:path";
 import { randomBytes } from "node:crypto";
 async function readDeploymentSource(configSource) {
-  const config2 = parseConfigJson(await fs4.readFile(configSource, "utf8"));
+  const config2 = parseConfigJson(await fs5.readFile(configSource, "utf8"));
   if (typeof config2.dataDirectory === "string" && config2.dataDirectory.replaceAll("\\", "/") === "../data") delete config2.dataDirectory;
   if (isRecord(config2.documentPreview)) {
-    for (const [key, executable] of [["pdfInfo", "pdfinfo.exe"], ["pdfToPpm", "pdftoppm.exe"]]) {
-      const setting = config2.documentPreview[key];
-      if (typeof setting === "string" && setting.replaceAll("\\", "/") === `../tools/poppler/Library/bin/${executable}`) {
-        delete config2.documentPreview[key];
-      }
-    }
+    delete config2.documentPreview.pdfInfo;
+    delete config2.documentPreview.pdfToPpm;
   }
   return config2;
 }
@@ -54003,23 +54062,23 @@ function withServiceToken(config2) {
   return config2.serviceToken === void 0 || config2.serviceToken === "" ? { ...config2, serviceToken: randomBytes(32).toString("hex") } : config2;
 }
 async function writeConfig(filename, config2, replace3) {
-  await fs4.mkdir(path6.dirname(filename), { recursive: true });
+  await fs5.mkdir(path7.dirname(filename), { recursive: true });
   const temporary = `${filename}.${randomBytes(8).toString("hex")}.tmp`;
-  const handle = await fs4.open(temporary, "wx", 384);
+  const handle = await fs5.open(temporary, "wx", 384);
   try {
     try {
       await handle.writeFile(JSON.stringify(config2, null, 2) + "\n");
     } finally {
       await handle.close();
     }
-    if (replace3) await fs4.rename(temporary, filename);
-    else await fs4.link(temporary, filename);
+    if (replace3) await fs5.rename(temporary, filename);
+    else await fs5.link(temporary, filename);
     return true;
   } catch (error3) {
     if (!replace3 && hasCode(error3, "EEXIST")) return false;
     throw error3;
   } finally {
-    await fs4.rm(temporary, { force: true });
+    await fs5.rm(temporary, { force: true });
   }
 }
 async function initializeDesktopConfig({ filename, options }, configSources, replace3 = false) {
@@ -54046,7 +54105,7 @@ async function initializeDesktopConfig({ filename, options }, configSources, rep
 
 // src/runtime.ts
 import { createHmac } from "node:crypto";
-var SERVICE_VERSION = "0.11.10";
+var SERVICE_VERSION = "0.11.11";
 var RUNTIME_PROTOCOL = "tbea-runtime/v1";
 function canonical(value) {
   if (Array.isArray(value)) return value.map(canonical);
@@ -54057,17 +54116,18 @@ function configIdentity(config2) {
   const value = { ...config2 };
   delete value.service;
   delete value.autoRetrieveKnowledge;
+  delete value.diagnosticsDirectory;
   if (!config2.documentPreview?.enabled) delete value.documentPreview;
   return createHmac("sha256", config2.serviceToken).update(JSON.stringify(canonical(value))).digest("hex");
 }
 
 // plugin/src/selection.mjs
-import fs5 from "node:fs/promises";
-import path7 from "node:path";
+import fs6 from "node:fs/promises";
+import path8 from "node:path";
 import { createHash as createHash4, randomUUID as randomUUID4 } from "node:crypto";
 var SelectionStore = class {
   constructor(directory) {
-    this.directory = path7.join(directory, "dsh-selection");
+    this.directory = path8.join(directory, "dsh-selection");
     this.states = /* @__PURE__ */ new Map();
     this.writes = Promise.resolve();
   }
@@ -54081,7 +54141,7 @@ var SelectionStore = class {
     if (this.states.has(key)) return this.states.get(key);
     let data;
     try {
-      data = JSON.parse(await fs5.readFile(path7.join(this.directory, `${key}.json`), "utf8"));
+      data = JSON.parse(await fs6.readFile(path8.join(this.directory, `${key}.json`), "utf8"));
     } catch (error3) {
       if (error3.code !== "ENOENT") throw new Error("\u516C\u53F8\u77E5\u8BC6\u5E93\u9009\u62E9\u914D\u7F6E\u8BFB\u53D6\u5931\u8D25\uFF0C\u8BF7\u68C0\u67E5 data/dsh-selection");
     }
@@ -54094,15 +54154,15 @@ var SelectionStore = class {
     const key = this.key(id);
     if (typeof selected !== "boolean") throw new Error("\u516C\u53F8\u77E5\u8BC6\u5E93\u5F00\u5173\u5FC5\u987B\u4E3A\u5E03\u5C14\u503C");
     const operation = this.writes.then(async () => {
-      await fs5.mkdir(this.directory, { recursive: true });
-      const file = path7.join(this.directory, `${key}.json`);
+      await fs6.mkdir(this.directory, { recursive: true });
+      const file = path8.join(this.directory, `${key}.json`);
       const temporary = `${file}.${randomUUID4()}.tmp`;
       try {
-        await fs5.writeFile(temporary, JSON.stringify({ schema: "tbea-selection/v1", selected }));
-        await fs5.rename(temporary, file);
+        await fs6.writeFile(temporary, JSON.stringify({ schema: "tbea-selection/v1", selected }));
+        await fs6.rename(temporary, file);
         this.states.set(key, selected);
       } finally {
-        await fs5.rm(temporary, { force: true });
+        await fs6.rm(temporary, { force: true });
       }
     });
     this.writes = operation.catch(() => {
@@ -54173,8 +54233,8 @@ function createPrefetch({ selections, callTool, status, autoRetrieveKnowledge = 
 
 // src/server.ts
 import http from "node:http";
-import fs9 from "node:fs/promises";
-import path11 from "node:path";
+import fs10 from "node:fs/promises";
+import path12 from "node:path";
 import { fileURLToPath } from "node:url";
 import { timingSafeEqual } from "node:crypto";
 
@@ -56872,10 +56932,10 @@ var StreamableHTTPServerTransport = class {
 };
 
 // src/library-browser.ts
-import { randomUUID as randomUUID6 } from "node:crypto";
-import fs8 from "node:fs/promises";
+import { randomUUID as randomUUID5 } from "node:crypto";
+import fs9 from "node:fs/promises";
 import os from "node:os";
-import path10 from "node:path";
+import path11 from "node:path";
 
 // src/documents.ts
 var actions = "/openapi/v1/knowledgeBase?Action=";
@@ -56978,17 +57038,17 @@ async function describeDocument(config2, library, id, signal, fetcher) {
 
 // src/document-renderer.ts
 import { execFile } from "node:child_process";
-import { randomUUID as randomUUID5 } from "node:crypto";
+import { createHash as createHash5 } from "node:crypto";
 import { createWriteStream } from "node:fs";
-import fs7 from "node:fs/promises";
-import path9 from "node:path";
+import fs8 from "node:fs/promises";
+import path10 from "node:path";
 import { Readable as Readable2 } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { pathToFileURL } from "node:url";
 
 // src/preview-content.ts
-import fs6 from "node:fs/promises";
-import path8 from "node:path";
+import fs7 from "node:fs/promises";
+import path9 from "node:path";
 
 // node_modules/mailparser/dist/esm/mail-parser.js
 var import_mailsplit = __toESM(require_mailsplit(), 1);
@@ -61468,8 +61528,8 @@ function trimCharacterEnd(str2, char) {
 function unicodeEscape(str2) {
   return str2.replace(/[\s\S]/g, (c) => "\\u" + c.charCodeAt().toString(16).padStart(4, "0"));
 }
-function get(obj, path13) {
-  for (const key of path13) {
+function get(obj, path14) {
+  for (const key of path14) {
     if (!obj) {
       return void 0;
     }
@@ -62670,8 +62730,8 @@ function withBrackets(str2, brackets) {
   const rbr = typeof brackets[1] === "string" ? brackets[1] : "]";
   return lbr + str2 + rbr;
 }
-function pathRewrite(path13, rewriter, baseUrl, metadata, elem) {
-  const modifiedPath = typeof rewriter === "function" ? rewriter(path13, metadata, elem) : path13;
+function pathRewrite(path14, rewriter, baseUrl, metadata, elem) {
+  const modifiedPath = typeof rewriter === "function" ? rewriter(path14, metadata, elem) : path14;
   return modifiedPath[0] === "/" && baseUrl ? trimCharacterEnd(baseUrl, "/") + modifiedPath : modifiedPath;
 }
 function formatImage(elem, walk, builder, formatOptions) {
@@ -62995,9 +63055,9 @@ function handleDeprecatedOptions(options) {
     options.selectors.push(...tagDefinitions);
     options.selectors = mergeDuplicatesPreferLast(options.selectors, ((s) => s.selector));
   }
-  function set(obj, path13, value) {
-    const valueKey = path13.pop();
-    for (const key of path13) {
+  function set(obj, path14, value) {
+    const valueKey = path14.pop();
+    for (const key of path14) {
       let nested = obj[key];
       if (!nested) {
         nested = {};
@@ -69818,7 +69878,7 @@ function imageExtension(bytes) {
   if (bytes[0] === 255 && bytes[1] === 216) return "jpg";
   if (bytes.toString("ascii", 0, 2) === "BM") return "bmp";
 }
-async function staticHtml(input, directory, embedded = /* @__PURE__ */ new Map()) {
+async function staticHtml(input, directory, embedded = /* @__PURE__ */ new Map(), browser = false) {
   const tree = parse3(input);
   let images = 0;
   let imageBytes = 0;
@@ -69837,11 +69897,12 @@ async function staticHtml(input, directory, embedded = /* @__PURE__ */ new Map()
       if (!ext || !bytes || images >= 200 || imageBytes + bytes.length > 20 * 1024 * 1024) return alt ? `<span>${escape4(alt)}</span>` : "";
       const name3 = `inline-${++images}.${ext}`;
       imageBytes += bytes.length;
-      await fs6.writeFile(path8.join(directory, name3), bytes);
+      if (!browser) await fs7.writeFile(path9.join(directory, name3), bytes);
+      const target = browser ? `data:image/${ext === "jpg" ? "jpeg" : ext};base64,${bytes.toString("base64")}` : name3;
       const width = attrs.get("width") ?? "";
       const height = attrs.get("height") ?? "";
       const dimensions = [width, height].every((n) => /^\d{1,4}$/.test(n)) ? ` width="${Math.min(620, Number(width))}" height="${Math.round(Math.min(1, 620 / Number(width)) * Number(height))}"` : ' width="480"';
-      return `<img src="${name3}"${dimensions}${alt ? ` alt="${escape4(alt)}"` : ""}>`;
+      return `<img src="${target}"${dimensions}${alt ? ` alt="${escape4(alt)}"` : ""}>`;
     }
     let content3 = "";
     if ("childNodes" in node3) for (const child of node3.childNodes) content3 += await render2(child, depth + 1);
@@ -69851,10 +69912,11 @@ async function staticHtml(input, directory, embedded = /* @__PURE__ */ new Map()
     return `<${tag2}${span}${tag2 === "table" ? ' border="1" cellpadding="4"' : ""}>${content3}</${tag2}>`;
   }
   const body = await render2(tree, 0);
+  if (browser) return body;
   return `<!doctype html><html><head><meta charset="utf-8"><style>body{font-size:11pt}pre{white-space:pre-wrap}</style></head><body>${body}</body></html>`;
 }
-async function webDocument(input, format, directory) {
-  const bytes = await fs6.readFile(input);
+async function webDocument(input, format, directory, browser = false) {
+  const bytes = await fs7.readFile(input);
   const embedded = /* @__PURE__ */ new Map();
   let html;
   if (format === "mhtml") {
@@ -69883,13 +69945,14 @@ async function webDocument(input, format, directory) {
     const value = decode7(bytes, format);
     html = format === "md" ? micromark(value, { extensions: [gfm()], htmlExtensions: [gfmHtml()] }) : format === "txt" ? `<p>${escape4(value).replace(/\r\n?|\n/g, "<br>")}</p>` : value;
   }
-  const target = path8.join(directory, "content.html");
-  await fs6.writeFile(target, await staticHtml(html, directory, embedded));
+  const target = path9.join(directory, "content.html");
+  const markup = await staticHtml(html, directory, embedded, browser);
+  if (browser) return markup;
+  await fs7.writeFile(target, markup);
   return target;
 }
 
 // src/document-renderer.ts
-var maxPageBytes = 12 * 1024 * 1024;
 var mb = 1024 * 1024;
 var officeFormats = /* @__PURE__ */ new Set(["doc", "docx", "ppt", "pptx", "wps", "dps", "dpsx"]);
 var webFormats = /* @__PURE__ */ new Set(["txt", "md", "html", "mhtml"]);
@@ -69897,10 +69960,14 @@ var imageFormats = /* @__PURE__ */ new Set(["png", "jpg", "jpeg", "bmp"]);
 var supportedFormats = /* @__PURE__ */ new Set(["pdf", "ofd", ...officeFormats, ...webFormats, ...imageFormats]);
 function previewStatus(format, settings, mock) {
   if (!supportedFormats.has(format)) return "unsupported";
+  if (settings?.enabled === false || settings?.allowPdfViewer === false) return "disabled";
   if (mock) return "available";
-  if (!settings?.enabled) return "disabled";
-  if (format === "pdf" || settings.converters[format] || format !== "ofd" && settings.office) return "available";
+  if (!settings || !previewEnabled(settings)) return "disabled";
+  if (format === "pdf" || directText(format, settings) || settings.converters[format] || format !== "ofd" && settings.office) return "available";
   return "converter-required";
+}
+function directText(format, settings) {
+  return (format === "md" || format === "txt") && !settings.converters[format];
 }
 function inputLimit(format) {
   if (format === "pdf") return 300 * mb;
@@ -69909,7 +69976,7 @@ function inputLimit(format) {
   return 50 * mb;
 }
 async function header(filename, size = 1024) {
-  const handle = await fs7.open(filename, "r");
+  const handle = await fs8.open(filename, "r");
   try {
     const { buffer, bytesRead } = await handle.read(Buffer.alloc(size), 0, size);
     return buffer.subarray(0, bytesRead);
@@ -69926,7 +69993,8 @@ function validateInput(bytes, format) {
   const valid = format === "pdf" ? isPdf(bytes) : imageFormats.has(format) ? imageExtension(bytes) === (format === "jpeg" ? "jpg" : format) : format === "docx" || format === "pptx" || format === "ofd" || format === "dpsx" ? zip : officeFormats.has(format) ? ole || zip : bytes.length > 0;
   if (!valid) throw new PlatformError("INVALID_ORIGINAL", "\u539F\u6587\u4EF6\u5185\u5BB9\u4E0E\u6807\u6CE8\u683C\u5F0F\u4E0D\u7B26\uFF0C\u65E0\u6CD5\u9884\u89C8");
 }
-async function download(address, input, format, signal, fetcher) {
+async function downloadDocument(settings, address, format, directory, signal, progress, fetcher = fetch) {
+  const input = path10.join(directory, `input.${format}`);
   const url2 = originalAddress(address);
   if (!url2) throw new PlatformError("ORIGINAL_ADDRESS_INVALID", "\u5E73\u53F0\u6682\u672A\u63D0\u4F9B\u53EF\u7528\u7684\u540C\u6E90\u539F\u6587\u5730\u5740");
   const limit = inputLimit(format);
@@ -69936,11 +70004,15 @@ async function download(address, input, format, signal, fetcher) {
     });
     throw new PlatformError("ORIGINAL_UNAVAILABLE", `\u8BFB\u53D6\u539F\u6587\u5931\u8D25\uFF08HTTP ${result.status}\uFF09\uFF0C\u8BF7\u91CD\u8BD5`);
   }
-  if (Number(result.headers.get("content-length")) > limit) {
+  const length = Number(result.headers.get("content-length"));
+  if (length > limit) {
     await result.body.cancel().catch(() => {
     });
     throw new PlatformError("ORIGINAL_TOO_LARGE", "\u539F\u6587\u8D85\u8FC7\u6B64\u683C\u5F0F\u7684\u9884\u89C8\u5927\u5C0F\u9650\u5236");
   }
+  const digest = format !== "pdf" && !directText(format, settings) ? createHash5("sha256") : void 0;
+  const total = !result.headers.get("content-encoding") && Number.isSafeInteger(length) && length > 0 ? length : void 0;
+  progress?.(0, total);
   const reader = result.body.getReader();
   async function* stream() {
     let size = 0;
@@ -69951,6 +70023,8 @@ async function download(address, input, format, signal, fetcher) {
         if (done) break;
         size += value.byteLength;
         if (size > limit) throw new PlatformError("ORIGINAL_TOO_LARGE", "\u539F\u6587\u8D85\u8FC7\u6B64\u683C\u5F0F\u7684\u9884\u89C8\u5927\u5C0F\u9650\u5236");
+        digest?.update(value);
+        progress?.(size, total);
         yield value;
       }
     } finally {
@@ -69959,6 +70033,8 @@ async function download(address, input, format, signal, fetcher) {
     }
   }
   await pipeline(Readable2.from(stream()), createWriteStream(input, { flags: "wx", mode: 384 }), { signal });
+  validateInput(await header(input), format);
+  return { input, version: digest?.digest("hex") };
 }
 function run(program, args, directory, signal, message) {
   signal.throwIfAborted();
@@ -69966,7 +70042,9 @@ function run(program, args, directory, signal, message) {
     execFile(program, args, { cwd: directory, windowsHide: true, signal, killSignal: "SIGKILL", timeout: 1e5, maxBuffer: 1024 * 1024, env: { ...process.env, LC_ALL: "C" } }, (error3, stdout) => {
       if (signal.aborted) reject(signal.reason);
       else if (error3) {
-        reject(new PlatformError("RENDER_PROGRAM_FAILED", error3.code === "ENOENT" ? "\u9884\u89C8\u7EC4\u4EF6\u8DEF\u5F84\u65E0\u6548\uFF0C\u8BF7\u8054\u7CFB\u7BA1\u7406\u5458\u68C0\u67E5\u914D\u7F6E" : message));
+        if (error3.code === "ENOENT") return reject(new PlatformError("PREVIEW_PROGRAM_MISSING", "\u9884\u89C8\u7EC4\u4EF6\u8DEF\u5F84\u65E0\u6548\uFF0C\u8BF7\u8054\u7CFB\u7BA1\u7406\u5458\u68C0\u67E5\u914D\u7F6E"));
+        if (error3.killed) return reject(new PlatformError("PREVIEW_CONVERSION_TIMEOUT", "\u6587\u6863\u8F6C\u6362\u8D85\u65F6\uFF0C\u8BF7\u91CD\u8BD5"));
+        reject(new PlatformError("RENDER_PROGRAM_FAILED", message));
       } else resolve(stdout);
     });
   });
@@ -69977,37 +70055,41 @@ var officeRegistry = `<?xml version="1.0" encoding="UTF-8"?>
 <item oor:path="/org.openoffice.Office.Writer/Content/Update"><prop oor:name="Link" oor:op="fuse"><value>0</value></prop></item>
 </oor:items>`;
 async function withBundledOffice(program, directory, task) {
-  const link = path9.join(directory, "lo");
-  await fs7.symlink(path9.dirname(path9.dirname(program)), link, "junction").catch((error3) => {
+  const link = path10.join(directory, "lo");
+  await fs8.symlink(path10.dirname(path10.dirname(program)), link, "junction").catch((error3) => {
     const failure2 = new PlatformError("OFFICE_PATH_UNAVAILABLE", "\u65E0\u6CD5\u4E3A\u5185\u7F6E LibreOffice \u521B\u5EFA\u4E34\u65F6\u8FD0\u884C\u8DEF\u5F84\uFF0C\u8BF7\u8054\u7CFB\u7BA1\u7406\u5458\u68C0\u67E5\u4E34\u65F6\u76EE\u5F55\u6743\u9650");
     failure2.cause = error3;
     throw failure2;
   });
   try {
-    return await task(path9.join(link, "program", path9.basename(program)));
+    return await task(path10.join(link, "program", path10.basename(program)));
   } finally {
-    await fs7.unlink(link);
+    await fs8.unlink(link);
   }
 }
 async function convertOffice(input, directory, program, bundled, signal) {
-  const profile = path9.join(directory, "office-profile");
-  await fs7.mkdir(path9.join(profile, "user"), { recursive: true });
-  await fs7.writeFile(path9.join(profile, "user", "registrymodifications.xcu"), officeRegistry);
+  const profile = path10.join(directory, "office-profile");
+  await fs8.mkdir(path10.join(profile, "user"), { recursive: true });
+  await fs8.writeFile(path10.join(profile, "user", "registrymodifications.xcu"), officeRegistry);
   const convert4 = (executable) => run(executable, [`-env:UserInstallation=${pathToFileURL(profile).href}`, "--headless", "--invisible", "--norestore", "--convert-to", "pdf", "--outdir", directory, input], directory, signal, "\u6587\u6863\u8F6C\u6362\u5931\u8D25\uFF0C\u53EF\u80FD\u9700\u8981\u7BA1\u7406\u5458\u914D\u7F6E\u9002\u914D\u8BE5\u683C\u5F0F\u7684\u8F6C\u6362\u7EC4\u4EF6");
   if (bundled && process.platform === "win32") await withBundledOffice(program, directory, convert4);
   else await convert4(program);
-  return path9.join(directory, `${path9.parse(input).name}.pdf`);
+  return path10.join(directory, `${path10.parse(input).name}.pdf`);
 }
-async function prepareDocumentPdf(settings, address, format, directory, signal, fetcher = fetch) {
-  const original = path9.join(directory, `input.${format}`);
-  await download(address, original, format, signal, fetcher);
-  validateInput(await header(original), format);
+async function preparePreviewDocument(settings, original, format, directory, signal, stage) {
+  if (directText(format, settings)) {
+    stage?.("preparing-text");
+    const html = await webDocument(original, format, directory, true);
+    if (Buffer.byteLength(html) > 32 * mb) throw new PlatformError("ORIGINAL_TOO_LARGE", "\u6392\u7248\u540E\u7684\u539F\u6587\u8D85\u8FC7\u9884\u89C8\u5927\u5C0F\u9650\u5236");
+    return { html };
+  }
   let pdf = original;
   if (format !== "pdf") {
+    stage?.("converting");
     try {
       const converter = settings.converters[format];
       if (converter) {
-        pdf = path9.join(directory, "converted.pdf");
+        pdf = path10.join(directory, "converted.pdf");
         await run(converter, [original, pdf], directory, signal, "\u4E13\u7528\u7EC4\u4EF6\u672A\u80FD\u8F6C\u6362\u8BE5\u6587\u6863\uFF0C\u8BF7\u8054\u7CFB\u7BA1\u7406\u5458\u68C0\u67E5\u683C\u5F0F\u517C\u5BB9\u6027");
       } else {
         if (!settings.office) throw new PlatformError("CONVERTER_REQUIRED", "\u7BA1\u7406\u5458\u5C1A\u672A\u914D\u7F6E\u6B64\u683C\u5F0F\u7684\u8F6C\u6362\u7EC4\u4EF6");
@@ -70015,34 +70097,15 @@ async function prepareDocumentPdf(settings, address, format, directory, signal, 
         pdf = await convertOffice(input, directory, settings.office, settings.officeBundled === true, signal);
       }
     } finally {
-      await fs7.rm(original, { force: true });
+      await fs8.rm(original, { force: true });
     }
   }
-  const bytes = (await fs7.stat(pdf).catch(() => void 0))?.size ?? 0;
+  const bytes = (await fs8.stat(pdf).catch(() => void 0))?.size ?? 0;
   if (!bytes || bytes > 300 * mb || !isPdf(await header(pdf).catch(() => Buffer.alloc(0)))) {
     throw new PlatformError("INVALID_CONVERSION", "\u6CA1\u6709\u751F\u6210\u53EF\u9884\u89C8\u7684\u6587\u6863\uFF0C\u6587\u4EF6\u53EF\u80FD\u53D7\u4FDD\u62A4\u6216\u9700\u8981\u4E13\u7528\u8F6C\u6362\u7EC4\u4EF6");
   }
-  return { pdf, bytes };
+  return { pdf, pdfBytes: bytes };
 }
-async function readPageCount(settings, pdf, directory, signal) {
-  const info = await run(settings.pdfInfo, [pdf], directory, signal, "\u65E0\u6CD5\u8BFB\u53D6\u6587\u6863\u9875\u6570\uFF0C\u6587\u4EF6\u53EF\u80FD\u635F\u574F\u6216\u53D7\u5BC6\u7801\u4FDD\u62A4");
-  const pages = Number(/^Pages:\s+(\d+)\s*$/m.exec(info)?.[1]);
-  if (!Number.isInteger(pages) || pages < 1 || pages > 3e3) throw new PlatformError("INVALID_PAGE_COUNT", "\u6587\u6863\u9884\u89C8\u652F\u6301 1 \u81F3 3000 \u9875");
-  return pages;
-}
-async function renderDocumentPage(settings, pdf, page, directory, signal) {
-  const prefix = path9.join(directory, `page-${page}-${randomUUID5()}`);
-  const output = `${prefix}.png`;
-  try {
-    await run(settings.pdfToPpm, ["-f", String(page), "-l", String(page), "-scale-to", "1800", "-png", "-singlefile", pdf, prefix], directory, signal, "\u9875\u9762\u6E32\u67D3\u5931\u8D25\uFF0C\u8BF7\u91CD\u8BD5");
-    const size = (await fs7.stat(output)).size;
-    if (size < 8 || size > maxPageBytes || imageExtension(await header(output, 8)) !== "png") throw new PlatformError("INVALID_PREVIEW_PAGE", "\u9875\u9762\u9884\u89C8\u56FE\u65E0\u6548\u6216\u8FC7\u5927");
-    return await fs7.readFile(output, { signal });
-  } finally {
-    await fs7.rm(output, { force: true });
-  }
-}
-var mockDocumentPage = () => mockImage().bytes;
 
 // src/library-browser.ts
 var idleMs = 10 * 60 * 1e3;
@@ -70052,10 +70115,10 @@ var LibraryBrowser = class {
   lifetime = new AbortController();
   previews = /* @__PURE__ */ new Map();
   opening = new SharedTasks();
-  pageTasks = new SharedTasks();
-  pageCounts = new SharedTasks();
+  progress = /* @__PURE__ */ new Map();
   listing = new SharedTasks();
   gate = new SearchGate(2, 50);
+  readGate = new SearchGate(4, 0);
   pending = /* @__PURE__ */ new Set();
   timer;
   reservations = 0;
@@ -70095,7 +70158,7 @@ var LibraryBrowser = class {
     signal = this.operation(signal, 6e4);
     const library = await this.authorize(id, signal);
     if (this.mock) {
-      const documents2 = this.demoDocuments().map((info) => ({ ...info, preview: "available" }));
+      const documents2 = this.demoDocuments().map((info) => ({ ...info, preview: previewStatus(info.format, this.config.documentPreview, true) }));
       return { documents: documents2, total: documents2.length, complete: true };
     }
     const result = await this.listing.run(library, signal, (shared) => this.gate.run(
@@ -70113,62 +70176,136 @@ var LibraryBrowser = class {
     for (const item of entries) {
       if (item.renders || Date.now() - item.touched < idleMs && (!removeOldest || this.previews.size + this.reservations < maxPreviews)) continue;
       this.previews.delete(item.id);
-      if (item.directory) await fs8.rm(item.directory, { recursive: true, force: true, maxRetries: 3 }).catch(() => {
+      if (item.directory) await fs9.rm(item.directory, { recursive: true, force: true, maxRetries: 3 }).catch(() => {
       });
     }
   }
   async open(id, documentId, signal) {
     signal = this.operation(signal, 145e3);
-    const library = await this.authorize(id, signal);
-    if (!documentId || documentId.length > 256) throw new PlatformError("DOCUMENT_NOT_FOUND", "\u672A\u627E\u5230\u8BE5\u6587\u6863");
-    const preview = await this.opening.run(JSON.stringify([library, documentId]), signal, (shared) => this.track(this.gate.run(shared, async () => {
-      const doc = this.mock ? { info: this.demoDocuments().find((item) => item.id === documentId), address: void 0 } : await describeDocument(this.config, library, documentId, shared, this.fetcher);
-      if (!doc.info) throw new PlatformError("DOCUMENT_NOT_FOUND", "\u672A\u627E\u5230\u8BE5\u6587\u6863");
-      const state = previewStatus(doc.info.format, this.config.documentPreview, this.mock);
-      if (state !== "available") throw new PlatformError("PREVIEW_UNAVAILABLE", "\u5F53\u524D\u683C\u5F0F\u672A\u542F\u7528\u539F\u6587\u8F6C\u6362\uFF0C\u8BF7\u8054\u7CFB\u7BA1\u7406\u5458");
-      let address = doc.address;
-      if (!address && !this.mock) {
-        const { records } = await listDocuments(this.config, library, shared, this.fetcher, documentId);
-        address = records.get(documentId)?.address;
-      }
-      if (!this.mock && !address) throw new PlatformError("ORIGINAL_UNAVAILABLE", "\u5E73\u53F0\u672A\u63D0\u4F9B\u53EF\u7528\u7684\u540C\u6E90\u539F\u6587\u5730\u5740");
-      await this.prune(true);
-      if (this.previews.size + this.reservations >= maxPreviews) throw new PlatformError("PREVIEW_BUSY", "\u5F53\u524D\u9884\u89C8\u4EFB\u52A1\u8F83\u591A\uFF0C\u8BF7\u7A0D\u540E\u91CD\u8BD5");
-      this.reservations++;
-      let directory;
-      try {
-        directory = this.mock ? void 0 : await fs8.mkdtemp(path10.join(os.tmpdir(), "tbea-preview-"));
+    const started = performance.now();
+    let library;
+    try {
+      library = await this.authorize(id, signal);
+      if (!documentId || documentId.length > 256) throw new PlatformError("DOCUMENT_NOT_FOUND", "\u672A\u627E\u5230\u8BE5\u6587\u6863");
+    } catch (error3) {
+      await appendDiagnostic(this.config, {
+        event: "tbea-preview-prepare",
+        errorCode: diagnosticErrorCode(error3),
+        timing: [{ phase: "details", ms: Math.round(performance.now() - started) }]
+      });
+      throw error3;
+    }
+    const key = JSON.stringify([library, documentId]);
+    const preview = await this.opening.run(key, signal, (shared) => this.track(this.prepare(key, library, documentId, shared)));
+    return { previewId: preview.id, pdfBytes: preview.pdfBytes, html: preview.html };
+  }
+  async previewProgress(id, documentId, signal) {
+    const library = await this.authorize(id, this.operation(signal, 1e4));
+    const progress = this.progress.get(JSON.stringify([library, documentId]));
+    if (!progress) return null;
+    const { phase, received, total, startedAt } = progress;
+    return { phase, received, total, elapsedMs: Math.round(performance.now() - startedAt) };
+  }
+  async prepare(key, library, documentId, signal) {
+    const started = performance.now();
+    const timing = [];
+    const progress = { phase: "queued", startedAt: started };
+    const operation = randomUUID5();
+    this.progress.set(key, progress);
+    const stage = (phase) => {
+      const now = performance.now();
+      timing.push({ phase: progress.phase, ms: Math.round(now - progress.startedAt) });
+      Object.assign(progress, { phase, startedAt: now, received: void 0, total: void 0 });
+    };
+    let format;
+    let result;
+    let failure2;
+    let cached2 = false;
+    try {
+      result = await this.gate.run(signal, async () => {
+        stage("details");
+        const doc = this.mock ? { info: this.demoDocuments().find((item) => item.id === documentId), address: void 0 } : await describeDocument(this.config, library, documentId, signal, this.fetcher);
+        if (!doc.info) throw new PlatformError("DOCUMENT_NOT_FOUND", "\u672A\u627E\u5230\u8BE5\u6587\u6863");
+        format = doc.info.format;
         const settings = this.config.documentPreview;
-        const allowPdf = settings?.enabled && settings.allowPdfViewer;
-        const entry = { id: randomUUID6(), library, documentId, directory, touched: Date.now(), renders: 0 };
-        if (directory && address) {
-          const data = await prepareDocumentPdf(settings, address, doc.info.format, directory, shared, this.fetcher);
-          entry.pdf = data.pdf;
-          if (allowPdf) entry.pdfBytes = data.bytes;
-          else entry.pages = await readPageCount(settings, data.pdf, directory, shared);
-        } else {
-          entry.pages = ["pdf", "doc", "docx", "ppt", "pptx", "ofd", "dps", "dpsx", "wps"].includes(doc.info.format) ? 4 : 1;
-          if (allowPdf) {
-            entry.sample = samplePreviewPdf(entry.pages);
+        const state = previewStatus(format, settings, this.mock);
+        if (state !== "available") throw new PlatformError("PREVIEW_UNAVAILABLE", state === "disabled" ? "\u539F\u6587\u9884\u89C8\u672A\u542F\u7528" : "\u5F53\u524D\u683C\u5F0F\u672A\u542F\u7528\u539F\u6587\u8F6C\u6362\uFF0C\u8BF7\u8054\u7CFB\u7BA1\u7406\u5458");
+        let address = doc.address;
+        if (!address && !this.mock) {
+          const { records } = await listDocuments(this.config, library, signal, this.fetcher, documentId);
+          address = records.get(documentId)?.address;
+        }
+        if (!this.mock && !address) throw new PlatformError("ORIGINAL_UNAVAILABLE", "\u5E73\u53F0\u672A\u63D0\u4F9B\u53EF\u7528\u7684\u540C\u6E90\u539F\u6587\u5730\u5740");
+        let directory;
+        let reserved = false;
+        try {
+          const entry = { id: randomUUID5(), library, documentId, format, touched: Date.now(), renders: 0 };
+          let input;
+          if (address && settings) {
+            directory = await fs9.mkdtemp(path11.join(os.tmpdir(), "tbea-preview-"));
+            stage("downloading");
+            const downloaded = await downloadDocument(settings, address, format, directory, signal, (received, total) => {
+              Object.assign(progress, { received, total });
+            }, this.fetcher);
+            input = downloaded.input;
+            entry.version = downloaded.version;
+            if (downloaded.version) {
+              const reusable = [...this.previews.values()].find((item) => item.library === library && item.documentId === documentId && item.format === format && item.version === downloaded.version && Date.now() - item.touched < idleMs);
+              if (reusable) {
+                reusable.touched = Date.now();
+                cached2 = true;
+                return reusable;
+              }
+            }
+          }
+          await this.prune(true);
+          if (this.previews.size + this.reservations >= maxPreviews) throw new PlatformError("PREVIEW_BUSY", "\u5F53\u524D\u9884\u89C8\u4EFB\u52A1\u8F83\u591A\uFF0C\u8BF7\u7A0D\u540E\u91CD\u8BD5");
+          this.reservations++;
+          reserved = true;
+          if (input && directory && settings) {
+            Object.assign(entry, await preparePreviewDocument(settings, input, format, directory, signal, stage));
+          } else if (format === "md" || format === "txt") {
+            entry.html = "<h2>\u539F\u6587\u9884\u89C8\u6F14\u793A</h2><p>\u8FD9\u662F\u4E00\u4EFD\u5408\u6210\u6F14\u793A\u6587\u6863\u3002</p>";
+          } else {
+            entry.sample = samplePreviewPdf(["pdf", "doc", "docx", "ppt", "pptx", "ofd", "dps", "dpsx", "wps"].includes(format) ? 4 : 1);
             entry.pdfBytes = entry.sample.length;
           }
+          signal.throwIfAborted();
+          if (entry.pdf) {
+            entry.directory = directory;
+            directory = void 0;
+          }
+          entry.touched = Date.now();
+          this.previews.set(entry.id, entry);
+          this.timer ??= setInterval(() => {
+            void this.track(this.prune());
+          }, 6e4).unref();
+          return entry;
+        } finally {
+          if (reserved) this.reservations--;
+          if (directory) await fs9.rm(directory, { recursive: true, force: true, maxRetries: 3 }).catch(() => {
+          });
         }
-        shared.throwIfAborted();
-        entry.touched = Date.now();
-        this.previews.set(entry.id, entry);
-        this.timer ??= setInterval(() => {
-          void this.track(this.prune());
-        }, 6e4).unref();
-        return entry;
-      } catch (error3) {
-        if (directory) await fs8.rm(directory, { recursive: true, force: true, maxRetries: 3 }).catch(() => {
-        });
-        throw error3;
-      } finally {
-        this.reservations--;
-      }
-    })));
-    return { previewId: preview.id, pages: preview.pages, pdfBytes: preview.pdfBytes };
+      });
+      return result;
+    } catch (error3) {
+      failure2 = diagnosticErrorCode(error3);
+      throw error3;
+    } finally {
+      const now = performance.now();
+      timing.push({ phase: progress.phase, ms: Math.round(now - progress.startedAt) });
+      if (this.progress.get(key) === progress) this.progress.delete(key);
+      await appendDiagnostic(this.config, {
+        event: "tbea-preview-prepare",
+        operation,
+        previewId: result?.id,
+        format,
+        cached: cached2,
+        timing,
+        ms: Math.round(now - started),
+        errorCode: failure2
+      });
+    }
   }
   async withPreview(id, signal, task) {
     signal = this.operation(signal, 4e4);
@@ -70185,45 +70322,19 @@ var LibraryBrowser = class {
       }
     })());
   }
-  countPages(preview, signal) {
-    if (preview.pages !== void 0) return preview.pages;
-    const { pdf, directory } = preview;
-    if (!pdf || !directory) throw new PlatformError("PREVIEW_NOT_FOUND", "\u9884\u89C8\u5DF2\u8FC7\u671F\uFF0C\u8BF7\u91CD\u65B0\u6253\u5F00\u6587\u6863");
-    return this.pageCounts.run(preview.id, signal, (shared) => this.track(this.gate.run(shared, async () => {
-      preview.renders++;
-      try {
-        return preview.pages = await readPageCount(this.config.documentPreview, pdf, directory, shared);
-      } finally {
-        preview.renders--;
-      }
-    })));
-  }
-  async pageCount(id, signal) {
-    return { pages: await this.withPreview(id, signal, (preview, active) => this.countPages(preview, active)) };
-  }
-  async page(id, index2, signal) {
-    return this.withPreview(id, signal, async (preview, active) => {
-      const number4 = Number(index2);
-      if (!Number.isInteger(number4) || number4 < 1 || number4 > await this.countPages(preview, active)) throw new PlatformError("INVALID_PREVIEW_PAGE", "\u9875\u7801\u8D85\u51FA\u6587\u6863\u8303\u56F4");
-      if (!preview.pdf || !preview.directory) return mockDocumentPage();
-      const { pdf, directory } = preview;
-      return this.pageTasks.run(`${preview.id}:${number4}`, active, (shared) => {
-        return this.track(this.gate.run(shared, async () => {
-          preview.renders++;
-          try {
-            return await renderDocumentPage(this.config.documentPreview, pdf, number4, directory, shared);
-          } finally {
-            preview.renders--;
-          }
-        }));
-      });
+  async previewResult(id, status, elapsed, signal) {
+    const ms = Number(elapsed);
+    if (!status || !["ready", "password", "invalid-pdf", "load-failed", "render-failed"].includes(status) || !elapsed || !Number.isSafeInteger(ms) || ms < 0 || ms > 6e5) throw new PlatformError("INVALID_PREVIEW_RESULT", "\u65E0\u6548\u7684\u9884\u89C8\u7ED3\u679C");
+    return this.withPreview(id, signal, async (preview) => {
+      await appendDiagnostic(this.config, { event: "tbea-preview-first-page", previewId: preview.id, format: preview.format, status, ms });
+      return { recorded: true };
     });
   }
   async pdfRange(id, begin, end, signal) {
-    if (!this.config.documentPreview?.enabled || !this.config.documentPreview.allowPdfViewer) {
+    if (!previewEnabled(this.config.documentPreview) && !(this.mock && this.config.documentPreview === void 0)) {
       throw new PlatformError("PDF_VIEWER_DISABLED", "\u7BA1\u7406\u5458\u672A\u542F\u7528 PDF \u67E5\u770B\u5668");
     }
-    return this.withPreview(id, signal, (preview, active) => this.gate.run(active, async () => {
+    return this.withPreview(id, signal, (preview, active) => this.readGate.run(active, async () => {
       const from = Number(begin);
       const to = Number(end);
       if (!begin || !end || !/^\d+$/u.test(begin) || !/^\d+$/u.test(end) || !Number.isSafeInteger(from) || !Number.isSafeInteger(to) || to <= from || to - from > 1024 * 1024 || preview.pdfBytes === void 0 || to > preview.pdfBytes) {
@@ -70231,7 +70342,7 @@ var LibraryBrowser = class {
       }
       if (preview.sample) return preview.sample.subarray(from, to);
       if (!preview.pdf) throw new PlatformError("PREVIEW_NOT_FOUND", "\u9884\u89C8\u5DF2\u8FC7\u671F\uFF0C\u8BF7\u91CD\u65B0\u6253\u5F00\u6587\u6863");
-      const handle = await fs8.open(preview.pdf, "r");
+      const handle = await fs9.open(preview.pdf, "r");
       try {
         const buffer = Buffer.alloc(to - from);
         let offset = 0;
@@ -70251,7 +70362,7 @@ var LibraryBrowser = class {
     this.lifetime.abort();
     if (this.timer) clearInterval(this.timer);
     await Promise.allSettled([...this.pending]);
-    await Promise.all([...this.previews.values()].map((item) => item.directory && fs8.rm(item.directory, { recursive: true, force: true, maxRetries: 3 }).catch(() => {
+    await Promise.all([...this.previews.values()].map((item) => item.directory && fs9.rm(item.directory, { recursive: true, force: true, maxRetries: 3 }).catch(() => {
     })));
     this.previews.clear();
   }
@@ -70317,7 +70428,7 @@ async function createKnowledgeServer(config2, options = {}) {
           const image = await service.image(url2.searchParams.get("snapshotId"), url2.searchParams.get("imageId"), controller.signal);
           return send(res, 200, image.bytes, image.type);
         }
-        if (url2.pathname === "/demo/pdf-asset" && config2.documentPreview?.enabled && config2.documentPreview.allowPdfViewer) {
+        if (url2.pathname === "/demo/pdf-asset" && (previewEnabled(config2.documentPreview) || config2.documentPreview === void 0)) {
           const root2 = options.pdfAssetsDirectory ?? fileURLToPath(new URL("../plugin/lib/pdfjs/", import.meta.url));
           const asset = await pdfViewerAsset(root2, url2.searchParams.get("asset"));
           res.writeHead(asset.status, Object.fromEntries(asset.headers));
@@ -70330,8 +70441,8 @@ async function createKnowledgeServer(config2, options = {}) {
         const files = { "/demo": "index.html", "/demo/": "index.html", "/demo/demo.js": "demo.js", "/demo/demo.css": "demo.css" };
         const name3 = files[url2.pathname];
         if (!name3) return send(res, 404, { error: "\u672A\u627E\u5230\u8D44\u6E90" });
-        const root = options.demoDirectory || path11.join(path11.dirname(fileURLToPath(import.meta.url)), "demo");
-        const bytes = await fs9.readFile(path11.join(root, name3));
+        const root = options.demoDirectory || path12.join(path12.dirname(fileURLToPath(import.meta.url)), "demo");
+        const bytes = await fs10.readFile(path12.join(root, name3));
         return send(res, 200, bytes, name3.endsWith(".html") ? "text/html; charset=utf-8" : name3.endsWith(".css") ? "text/css" : "text/javascript");
       }
       if (!authorized(req, config2.serviceToken)) return send(res, 401, { error: "\u670D\u52A1\u53E3\u4EE4\u65E0\u6548" });
@@ -70396,10 +70507,10 @@ async function createKnowledgeServer(config2, options = {}) {
         return send(res, 200, await library.documents(args.get("libraryId"), signal));
       case "/open":
         return send(res, 200, await library.open(args.get("libraryId"), args.get("documentId"), signal));
-      case "/page-count":
-        return send(res, 200, await library.pageCount(args.get("previewId"), signal));
-      case "/page":
-        return send(res, 200, await library.page(args.get("previewId"), args.get("page"), signal), "image/png");
+      case "/preview-progress":
+        return send(res, 200, await library.previewProgress(args.get("libraryId"), args.get("documentId"), signal));
+      case "/preview-result":
+        return send(res, 200, await library.previewResult(args.get("previewId"), args.get("status"), args.get("elapsedMs"), signal));
       case "/pdf-range":
         return send(res, 200, await library.pdfRange(args.get("previewId"), args.get("begin"), args.get("end"), signal), "application/octet-stream");
       default:
@@ -70457,14 +70568,14 @@ async function main() {
     void app.close().then(() => process.exit(0));
   });
 }
-if (process.argv[1] && path11.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) main().catch((error3) => {
+if (process.argv[1] && path12.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) main().catch((error3) => {
   console.error(error3 instanceof Error ? error3.message : "\u542F\u52A8\u5931\u8D25");
   process.exitCode = 1;
 });
 
 // plugin/src/service-manager.mjs
 import { fileURLToPath as fileURLToPath2 } from "node:url";
-import { randomUUID as randomUUID7 } from "node:crypto";
+import { randomUUID as randomUUID6 } from "node:crypto";
 var registryKey = Symbol.for(`tbea-knowledge.services.${SERVICE_VERSION}`);
 var registry2 = globalThis[registryKey] ||= /* @__PURE__ */ new Map();
 var ServiceManager = class {
@@ -70562,7 +70673,7 @@ var ServiceManager = class {
   async withSemanticModel(model, call) {
     const entry = this.entry;
     if (!model || this.closed || !entry?.app || entry.paused) return call();
-    const id = randomUUID7();
+    const id = randomUUID6();
     entry.semanticModels.set(id, model);
     try {
       return await call(id);
@@ -70741,18 +70852,19 @@ var name2 = "tbea-knowledge";
 var inject = ["tools", "connection", "agents"];
 async function apply(ctx, config2 = {}) {
   const explicitConfig = config2.configFile !== void 0;
-  if (explicitConfig && (typeof config2.configFile !== "string" || !path12.isAbsolute(config2.configFile))) {
+  if (explicitConfig && (typeof config2.configFile !== "string" || !path13.isAbsolute(config2.configFile))) {
     throw new Error("\u8BF7\u5728\u63D2\u4EF6\u914D\u7F6E\u4E2D\u8BBE\u7F6E configFile \u7684\u7EDD\u5BF9\u8DEF\u5F84");
   }
   const packageRoot = fileURLToPath3(new URL("..", import.meta.url));
-  const projectRoot = config2.projectRoot || (explicitConfig ? path12.resolve(path12.dirname(config2.configFile), "..") : packageRoot);
-  if (typeof projectRoot !== "string" || !path12.isAbsolute(projectRoot)) throw new Error("projectRoot \u5FC5\u987B\u4E3A\u9879\u76EE\u7684\u7EDD\u5BF9\u8DEF\u5F84");
-  const local = explicitConfig ? await readConfig(config2.configFile).catch((error3) => {
+  const projectRoot = config2.projectRoot || (explicitConfig ? path13.resolve(path13.dirname(config2.configFile), "..") : packageRoot);
+  if (typeof projectRoot !== "string" || !path13.isAbsolute(projectRoot)) throw new Error("projectRoot \u5FC5\u987B\u4E3A\u9879\u76EE\u7684\u7EDD\u5BF9\u8DEF\u5F84");
+  const dshHome = process.env.DSH_HOME;
+  const local = explicitConfig ? await readConfig(config2.configFile, path13.isAbsolute(dshHome ?? "") ? { defaultDiagnosticsDirectory: path13.join(dshHome, "logs") } : void 0).catch((error3) => {
     if (error3.code === "ENOENT") throw new Error(`\u77E5\u8BC6\u5E93\u914D\u7F6E\u6587\u4EF6\u4E0D\u5B58\u5728\uFF0C\u8BF7\u5148\u8FD0\u884C\u7BA1\u7406\u5458\u521D\u59CB\u5316\u811A\u672C\uFF1A${config2.configFile}`, { cause: error3 });
     throw error3;
   }) : (await initializeDesktopConfig(desktopConfigLocations(process.env.DSH_HOME, projectRoot), [
-    path12.join(packageRoot, DESKTOP_DEPLOYMENT_CONFIG),
-    path12.join(packageRoot, DESKTOP_CONFIG_TEMPLATE)
+    path13.join(packageRoot, DESKTOP_DEPLOYMENT_CONFIG),
+    path13.join(packageRoot, DESKTOP_CONFIG_TEMPLATE)
   ])).config;
   const { autoRetrieveKnowledge } = local;
   if (typeof local.serviceToken !== "string" || local.serviceToken.length < 32 || !Number.isInteger(local.port)) throw new Error("\u77E5\u8BC6\u670D\u52A1\u914D\u7F6E\u672A\u521D\u59CB\u5316");
@@ -70761,8 +70873,8 @@ async function apply(ctx, config2 = {}) {
   const lifetime = new AbortController();
   let connection;
   let connecting;
-  const pdfAssetsDirectory = path12.join(packageRoot, "lib/pdfjs");
-  const service = new ServiceManager(local, { demoDirectory: path12.join(projectRoot, "dist/demo"), pdfAssetsDirectory });
+  const pdfAssetsDirectory = path13.join(packageRoot, "lib/pdfjs");
+  const service = new ServiceManager(local, { demoDirectory: path13.join(projectRoot, "dist/demo"), pdfAssetsDirectory });
   const clients = /* @__PURE__ */ new Set();
   const requestScope = new AsyncLocalStorage();
   const selections = new SelectionStore(local.dataDirectory);
@@ -70884,13 +70996,14 @@ async function apply(ctx, config2 = {}) {
       });
     }
   }
+  const viewerEnabled = previewEnabled(local.documentPreview) || local.mode === "mock" && local.documentPreview === void 0;
   ctx.connection.fetch.register({
     path: displayPath,
-    methods: local.documentPreview?.enabled && local.documentPreview.allowPdfViewer ? ["POST", "GET"] : ["POST"],
+    methods: viewerEnabled ? ["POST", "GET"] : ["POST"],
     requestBody: "buffered",
     async fetch(request) {
       if (request.method === "GET") {
-        if (!local.documentPreview?.enabled || !local.documentPreview.allowPdfViewer) return new Response(null, { status: 404 });
+        if (!viewerEnabled) return new Response(null, { status: 404 });
         return pdfViewerAsset(pdfAssetsDirectory, new URL(request.url).searchParams.get("asset"));
       }
       const mediaType = request.headers.get("content-type")?.split(";", 1)[0].trim().toLowerCase();
@@ -70921,7 +71034,7 @@ async function apply(ctx, config2 = {}) {
         if (endpoint === "select") status.delete(args.sessionId);
         return { ok: true, value: { selected, autoRetrieveKnowledge, ...status.get(args.sessionId) || {}, ...service.snapshot() } };
       }
-      const libraryAction = ["catalog", "documents", "open", "page-count", "page", "pdf-range"].find((name3) => endpoint === `library-${name3}`);
+      const libraryAction = ["catalog", "documents", "open", "preview-progress", "preview-result", "pdf-range"].find((name3) => endpoint === `library-${name3}`);
       if (!libraryAction && !["snapshot", "asset", "refresh"].includes(endpoint)) throw new Error("\u672A\u77E5\u77E5\u8BC6\u5C55\u793A\u64CD\u4F5C");
       await service.ensure();
       if (endpoint === "refresh") {
@@ -70929,7 +71042,7 @@ async function apply(ctx, config2 = {}) {
       }
       const url2 = new URL(libraryAction ? `/library/${libraryAction}` : endpoint === "asset" ? "/asset" : "/snapshot", base);
       if (libraryAction) {
-        for (const key of ["libraryId", "documentId", "previewId", "page", "begin", "end"]) {
+        for (const key of ["libraryId", "documentId", "previewId", "status", "elapsedMs", "begin", "end"]) {
           const value = args?.[key];
           if (typeof value === "string" || typeof value === "number") url2.searchParams.set(key, String(value));
         }
@@ -70942,7 +71055,7 @@ async function apply(ctx, config2 = {}) {
         const error3 = await response.json().catch(() => ({}));
         return { ok: false, error: { code: error3.code || "TBEA_VIEW_FAILED", message: error3.message || `\u77E5\u8BC6\u670D\u52A1 HTTP ${response.status}`, details: {} } };
       }
-      if (endpoint === "asset" || libraryAction === "page" || libraryAction === "pdf-range") {
+      if (endpoint === "asset" || libraryAction === "pdf-range") {
         const bytes = new Uint8Array(await response.arrayBuffer());
         return { ok: true, value: { mediaType: response.headers.get("content-type"), bytes } };
       }

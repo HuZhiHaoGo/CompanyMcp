@@ -1,5 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { KnowledgeService } from '../src/knowledge.ts';
 import { SearchGate } from '../src/gate.ts';
@@ -32,6 +35,34 @@ function fixture(libraries, fetcher, retrieval) {
   };
   return { service, snapshots };
 }
+
+test('越南别名归并、装置组成和差旅城市档次各自保留有依据的切片', async () => {
+  const { service } = fixture(['rules'], (_action, body) => {
+    if (body.query.includes('越南')) return response(
+      chunk('rules', 'vn', '越南国情简述：首都河内，地处中南半岛。', 0.75, { document_name: '国别手册【越南】.docx' }),
+      chunk('rules', 'other', '乌拉圭国情简述：首都蒙得维的亚。', 0.91, { document_name: '国别手册【乌拉圭】.docx' }),
+    );
+    if (body.query.includes('装置')) return response(
+      chunk('rules', 'technical', '本装置由光纤温度传感器、主机和连接附件组成。', 0.73, { document_name: '变压器用绕组光纤测温装置.pdf' }),
+      chunk('rules', 'wrong-device', '本装置由采集和网络模块组成。', 0.95, { document_name: '变压器油位监测装置.pdf' }),
+    );
+    return response(
+      chunk('rules', 'staff-band', '中层管理人员赴省会城市出差，伙食补助按标准表执行。', 0.82, { document_name: '差旅费管理办法.docx' }),
+      chunk('rules', 'city-band', '长沙按省会城市档列入差旅补助范围。', 0.80, { document_name: '差旅费城市档次表.docx' }),
+      chunk('rules', 'other-staff', '非中层干部赴长沙出差，每天伙食补助 30 元。', 0.91, { document_name: '差旅费管理办法.docx' }),
+    );
+  });
+  const vietnam = await service.search({ query: '越南的国情是什么？' });
+  assert.equal(vietnam.model.evidenceStatus, 'matched');
+  assert.deepEqual(vietnam.model.citations.map(c => c.chunkId), ['vn']);
+  const technical = await service.search({ query: '变压器用绕组光纤测温装置有哪几个部分构成' });
+  assert.equal(technical.model.evidenceStatus, 'matched');
+  assert.deepEqual(technical.model.citations.map(c => c.chunkId), ['technical']);
+  const travel = await service.search({ query: '中干出差长沙的补贴标准是怎么样的？' });
+  assert.equal(travel.model.evidenceStatus, 'partial');
+  assert.deepEqual(travel.model.citations.map(c => c.chunkId), ['staff-band', 'city-band']);
+  assert.ok(travel.model.citations.every(c => c.support === 'related'));
+});
 
 test('无别名的新制度库支持员工口语，引用正文可复核并排除访客办理', async () => {
   const passage = '员工证件遗失补办：在行政服务平台提交补办申请，领取新证件。';
@@ -140,16 +171,19 @@ test('明确证据走原路径，语义超时或取消无法产生推测证据',
 });
 
 test('现场 PLM 误召回回归，高分电力 PDF 被排除，直接证据先于相近报错', async t => {
-  const info = t.mock.method(console, 'info', () => {});
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'tbea-diagnostics-test-'));
+  t.after(() => fs.rm(directory, { recursive: true, force: true }));
   const { service } = fixture(['mixed'], () => response(
     chunk('mixed', 'accident', '配置足够的继电保护备品备件，对书面说明材料和结构配置文件进行确认。', 0.99, { document_name: '防止电力生产事故要求.pdf' }),
     chunk('mixed', 'unreleased', '配置型材料件处于正在工作，未发布，请提交材料件审签升级请求。', 0.93),
     chunk('mixed', 'missing', '未查找到配置型原材料，由 PLM 管理员处理。', 0.92),
     chunk('mixed', 'create', '未创建配置型材料件。操作为创建配置型材料件，填写参数后发布。', 0.68, { document_name: '019_未创建配置型材料件.docx' }),
   ), { perLibraryTop: 4, diagnostics: true });
+  service.config.diagnosticsDirectory = directory;
   const primary = await service.search({ query: '未创建配置型材料件，我该怎么办？' });
   assert.deepEqual(primary.model.citations.map(item => item.chunkId), ['create', 'unreleased', 'missing']);
-  const trace = JSON.parse(info.mock.calls[0].arguments[0]);
+  const trace = JSON.parse((await fs.readFile(path.join(directory, 'dsh-mcp-tbea-knowledge.jsonl'), 'utf8')).trim());
+  assert.equal(trace.searchId, primary.view.snapshotId);
   assert.equal(trace.candidates.find(item => item.chunkId === 'accident').reason, 'no-topic');
   assert.equal(trace.candidates.find(item => item.chunkId === 'accident').score, 0.99);
   assert.doesNotMatch(JSON.stringify(trace), /继电保护备品|书面说明材料|填写参数|凭证/);
