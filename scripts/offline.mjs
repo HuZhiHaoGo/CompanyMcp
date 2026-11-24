@@ -4,12 +4,17 @@ import { execFile } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import { build } from 'esbuild';
+import { DESKTOP_CONFIG_TEMPLATE, DESKTOP_DEPLOYMENT_CONFIG } from '../src/desktop-config.ts';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const output = path.join(root, 'offline', 'with-libreoffice', 'dsh-mcp-tbea-knowledge');
 const poppler = path.join(root, 'tools', 'poppler');
 const libreoffice = path.join(root, 'tools', 'libreoffice');
 const desktopPatch = '- insert:\n    - id: tbea-knowledge\n      name: dsh-plugin-tbea-knowledge\n';
+const isDeploymentFile = filename => {
+  const name = path.basename(filename).toLowerCase();
+  return name === DESKTOP_DEPLOYMENT_CONFIG || name.startsWith(DESKTOP_DEPLOYMENT_CONFIG + '.');
+};
 const popplerFiles = ['pdfinfo.exe', 'pdftoppm.exe', 'poppler.dll'];
 const officeFiles = [
   'program/soffice.com', 'program/soffice.bin', 'program/fundamental.ini', 'program/services.rdb',
@@ -18,6 +23,11 @@ const officeFiles = [
 ];
 if (process.platform !== 'win32' || process.arch !== 'x64') throw new Error('Build the Windows offline runtime on Windows x64');
 if (await fs.stat(path.join(output, 'config/local.json')).catch(() => false) || await fs.stat(path.join(output, 'data')).catch(() => false)) throw new Error('Offline output contains local configuration or data. Move it aside before creating a clean distribution.');
+const previousPluginFiles = await fs.readdir(path.join(output, 'plugin')).catch(error => {
+  if (error.code !== 'ENOENT') throw error;
+  return [];
+});
+if (previousPluginFiles.some(isDeploymentFile)) throw new Error('通用离线包输出目录中已有公司部署配置，请将它移到单独解压的内网部署副本后重新打包。');
 for (const name of popplerFiles) {
   const file = await fs.stat(path.join(poppler, 'Library', 'bin', name)).catch(() => undefined);
   if (!file?.isFile()) throw new Error(`Missing Poppler file tools/poppler/Library/bin/${name}`);
@@ -28,7 +38,7 @@ for (const name of officeFiles) {
 }
 await fs.mkdir(output, { recursive: true });
 for (const name of ['dist', 'plugin', 'config', 'docs', 'README.md', 'LICENSE-NOTICE.md']) {
-  await fs.cp(path.join(root, name), path.join(output, name), { recursive: true, filter: source => !source.includes(`${path.sep}src`) && !source.endsWith('local.json') && !source.endsWith('cordis.patch.yml') && !source.endsWith('generated-profile.patch.yml') });
+  await fs.cp(path.join(root, name), path.join(output, name), { recursive: true, filter: source => !isDeploymentFile(source) && !source.includes(`${path.sep}src`) && !source.endsWith('local.json') && !source.endsWith('cordis.patch.yml') && !source.endsWith('generated-profile.patch.yml') });
 }
 await fs.writeFile(path.join(output, 'plugin/cordis.patch.yml'), desktopPatch);
 await fs.cp(poppler, path.join(output, 'plugin/tools/poppler'), { recursive: true });
@@ -56,8 +66,10 @@ try {
   const { stdout } = await run(tar, ['-tf', temporary], { windowsHide: true, maxBuffer: 16 * 1024 * 1024 });
   const entries = new Set(stdout.trim().split(/\r?\n/));
   for (const name of [
-    'config/example.json', 'dist/server.mjs', 'plugin/package.json', 'plugin/lib/index.js', 'plugin/lib/client.js',
+    DESKTOP_CONFIG_TEMPLATE, `plugin/${DESKTOP_CONFIG_TEMPLATE}`, 'dist/server.mjs', 'plugin/package.json', 'plugin/lib/index.js', 'plugin/lib/client.js',
     'plugin/cordis.patch.yml', 'plugin/dist/demo/index.html', 'plugin/dist/demo/demo.js', 'scripts/init.mjs', 'runtime/node.exe',
+    'plugin/lib/pdfjs/pdf.mjs', 'plugin/lib/pdfjs/pdf.worker.mjs', 'plugin/lib/pdfjs/LICENSE',
+    'plugin/lib/pdfjs/cmaps/UniGB-UTF16-H.bcmap', 'plugin/lib/pdfjs/standard_fonts/FoxitFixed.pfb', 'plugin/lib/pdfjs/wasm/openjpeg.wasm',
     ...popplerFiles.map(name => `plugin/tools/poppler/Library/bin/${name}`),
     ...officeFiles.map(name => `plugin/tools/libreoffice/${name}`),
   ]) {
@@ -65,7 +77,7 @@ try {
   }
   for (const entry of entries) {
     const relative = entry.slice(rootName.length + 1);
-    if (!entry.startsWith(rootName + '/') || /^(?:data(?:\/|$)|tools\/poppler(?:\/|$)|config\/(?:local\.json|generated-profile\.patch\.yml)$)/i.test(relative) || /(?:^|\/)dsh-mcp-tbea-knowledge\.json$/i.test(relative)) {
+    if (!entry.startsWith(rootName + '/') || isDeploymentFile(relative) || /^(?:data(?:\/|$)|tools\/poppler(?:\/|$)|config\/(?:local\.json|generated-profile\.patch\.yml)$)/i.test(relative) || /(?:^|\/)dsh-mcp-tbea-knowledge\.json$/i.test(relative)) {
       throw new Error('Unexpected offline archive entry: ' + entry);
     }
   }
@@ -73,5 +85,5 @@ try {
 } finally {
   await fs.rm(temporary, { force: true });
 }
-console.log(`Offline runtime prepared: ${output}\nDesktop installation uses Initialize.ps1 -Desktop and the bundled plugin directory.`);
+console.log(`Offline runtime prepared: ${output}\n匠宝首次启用会使用包内 plugin/${DESKTOP_CONFIG_TEMPLATE} 初始化缺失的配置。`);
 console.log('Offline ZIP prepared: ' + archive);

@@ -10,6 +10,7 @@ export class ServiceManager {
   constructor(config,options={}) {
     this.config=config; this.identity=configIdentity(config); this.token=Symbol('DSH owner');
     this.demoDirectory=options.demoDirectory || fileURLToPath(new URL('../../dist/demo/',import.meta.url));
+    this.pdfAssetsDirectory = options.pdfAssetsDirectory;
     this.state={ servicePhase:'starting',serviceMessage:'正在启动公司知识服务…' }; this.closed=false;
   }
   snapshot() {
@@ -49,7 +50,7 @@ export class ServiceManager {
     if(await this.probe()) return;
     if(this.config.service?.autoStart===false) throw new Error('自动启动已关闭，请先运行 Start-Service.ps1');
     let app;
-    try { app=await createKnowledgeServer(this.config,{ managed:true,demoDirectory:this.demoDirectory, onPause: () => { entry.paused = true; },
+    try { app=await createKnowledgeServer(this.config,{ managed:true,demoDirectory:this.demoDirectory, pdfAssetsDirectory:this.pdfAssetsDirectory, onPause: () => { entry.paused = true; },
       takeSemanticModel: id => {
         const model = entry.semanticModels.get(id);
         entry.semanticModels.delete(id);

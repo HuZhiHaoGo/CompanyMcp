@@ -5,7 +5,9 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import { TOOLS, toolDescription } from '../../src/knowledge.ts';
 import { readConfig } from '../../src/config.ts';
-import { desktopConfigLocations } from '../../src/desktop-config.ts';
+import { pdfViewerAsset } from '../../src/pdf-preview.ts';
+import { DESKTOP_CONFIG_TEMPLATE, DESKTOP_DEPLOYMENT_CONFIG, desktopConfigLocations } from '../../src/desktop-config.ts';
+import { initializeDesktopConfig } from '../../src/desktop-initialization.ts';
 import { SERVICE_VERSION } from '../../src/runtime.ts';
 import { SelectionStore, createPrefetch } from './selection.mjs';
 import { ServiceManager } from './service-manager.mjs';
@@ -25,18 +27,21 @@ export async function apply(ctx, config = {}) {
   const packageRoot = fileURLToPath(new URL('..', import.meta.url));
   const projectRoot = config.projectRoot || (explicitConfig ? path.resolve(path.dirname(config.configFile), '..') : packageRoot);
   if (typeof projectRoot !== 'string' || !path.isAbsolute(projectRoot)) throw new Error('projectRoot 必须为项目的绝对路径');
-  const locations = explicitConfig ? { filename: config.configFile } : desktopConfigLocations(process.env.DSH_HOME, projectRoot);
-  const local = await readConfig(locations.filename, locations.options).catch(error => {
-    if (error.code === 'ENOENT') throw new Error(`知识库配置文件不存在，请先运行管理员初始化脚本：${locations.filename}`, { cause: error });
+  const local = explicitConfig ? await readConfig(config.configFile).catch(error => {
+    if (error.code === 'ENOENT') throw new Error(`知识库配置文件不存在，请先运行管理员初始化脚本：${config.configFile}`, { cause: error });
     throw error;
-  });
+  }) : (await initializeDesktopConfig(desktopConfigLocations(process.env.DSH_HOME, projectRoot), [
+    path.join(packageRoot, DESKTOP_DEPLOYMENT_CONFIG),
+    path.join(packageRoot, DESKTOP_CONFIG_TEMPLATE),
+  ])).config;
   const { autoRetrieveKnowledge } = local;
   if (typeof local.serviceToken !== 'string' || local.serviceToken.length < 32 || !Number.isInteger(local.port)) throw new Error('知识服务配置未初始化');
   const base = `http://127.0.0.1:${local.port}`;
   const authorization = `Bearer ${local.serviceToken}`;
   const lifetime = new AbortController(); let connection; let connecting;
   // 新安装的资源来自实际插件包，旧安装仍可通过 projectRoot 指向外层资源。
-  const service=new ServiceManager(local,{ demoDirectory:path.join(projectRoot,'dist/demo') });
+  const pdfAssetsDirectory = path.join(packageRoot, 'lib/pdfjs');
+  const service=new ServiceManager(local,{ demoDirectory:path.join(projectRoot,'dist/demo'), pdfAssetsDirectory });
   const clients = new Set();
   const requestScope = new AsyncLocalStorage();
   const selections = new SelectionStore(local.dataDirectory); const status = new Map();
@@ -140,9 +145,13 @@ export async function apply(ctx, config = {}) {
   // Connection 对精确 Fetch 路由执行 Owner 鉴权，并跟随插件卸载撤销注册。
   ctx.connection.fetch.register({
     path: displayPath,
-    methods: ['POST'],
+    methods: local.documentPreview?.enabled && local.documentPreview.allowPdfViewer ? ['POST', 'GET'] : ['POST'],
     requestBody: 'buffered',
     async fetch(request) {
+      if (request.method === 'GET') {
+        if (!local.documentPreview?.enabled || !local.documentPreview.allowPdfViewer) return new Response(null, { status: 404 });
+        return pdfViewerAsset(pdfAssetsDirectory, new URL(request.url).searchParams.get('asset'));
+      }
       const mediaType = request.headers.get('content-type')?.split(';', 1)[0].trim().toLowerCase();
       if (mediaType !== 'application/json') {
         return Response.json({ ok: false, error: { message: '知识展示请求须使用 JSON' } }, { status: 415 });
@@ -169,7 +178,7 @@ export async function apply(ctx, config = {}) {
         if (endpoint === 'select') status.delete(args.sessionId);
         return { ok:true,value:{ selected,autoRetrieveKnowledge,...(status.get(args.sessionId)||{}),...service.snapshot() } };
       }
-      const libraryAction = ['catalog', 'documents', 'open', 'page'].find(name => endpoint === `library-${name}`);
+      const libraryAction = ['catalog', 'documents', 'open', 'page-count', 'page', 'pdf-range'].find(name => endpoint === `library-${name}`);
       if (!libraryAction && !['snapshot', 'asset', 'refresh'].includes(endpoint)) throw new Error('未知知识展示操作');
       await service.ensure();
       if (endpoint === 'refresh') {
@@ -177,7 +186,7 @@ export async function apply(ctx, config = {}) {
       }
       const url = new URL(libraryAction ? `/library/${libraryAction}` : endpoint === 'asset' ? '/asset' : '/snapshot', base);
       if (libraryAction) {
-        for (const key of ['libraryId', 'documentId', 'previewId', 'page']) {
+        for (const key of ['libraryId', 'documentId', 'previewId', 'page', 'begin', 'end']) {
           const value = args?.[key];
           if (typeof value === 'string' || typeof value === 'number') url.searchParams.set(key, String(value));
         }
@@ -190,7 +199,7 @@ export async function apply(ctx, config = {}) {
         const error = await response.json().catch(() => ({}));
         return { ok: false, error: { code: error.code || 'TBEA_VIEW_FAILED', message: error.message || `知识服务 HTTP ${response.status}`, details: {} } };
       }
-      if (endpoint === 'asset' || libraryAction === 'page') {
+      if (endpoint === 'asset' || libraryAction === 'page' || libraryAction === 'pdf-range') {
         const bytes = new Uint8Array(await response.arrayBuffer());
         return { ok: true, value: { mediaType: response.headers.get('content-type'), bytes } };
       }

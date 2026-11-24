@@ -16,6 +16,7 @@ async function fixture(t, mode = 'mock') {
   const socket = net.createServer(); await new Promise(resolve => socket.listen(0, '127.0.0.1', resolve)); const port = socket.address().port; await new Promise(resolve => socket.close(resolve));
   const config = JSON.parse(await fs.readFile(new URL('../config/example.json', import.meta.url), 'utf8'));
   config.port = port; config.serviceToken = 't'.repeat(64); config.dataDirectory = directory;
+  config.documentPreview = { enabled: false, allowPdfViewer: false, converters: {} };
   if (mode === 'live') {
     config.mode = 'live';
     Object.assign(config.platform, { projectId: 'test-project', accessKey: 'test-access', secretKey: 'test-secret' });

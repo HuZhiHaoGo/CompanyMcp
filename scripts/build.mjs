@@ -2,11 +2,24 @@ import { build } from 'esbuild';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { DESKTOP_CONFIG_TEMPLATE } from '../src/desktop-config.ts';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const common = { bundle: true, target: 'node24', platform: 'node', format: 'esm', sourcemap: true, banner: { js: 'import { createRequire as __createRequire } from "node:module"; const require = __createRequire(import.meta.url);' } };
 await fs.mkdir(path.join(root, 'dist/demo'), { recursive: true });
 await fs.mkdir(path.join(root, 'plugin/lib'), { recursive: true });
+const desktopTemplate = path.join(root, 'plugin', DESKTOP_CONFIG_TEMPLATE);
+await fs.mkdir(path.dirname(desktopTemplate), { recursive: true });
+await fs.copyFile(path.join(root, DESKTOP_CONFIG_TEMPLATE), desktopTemplate);
+const pdfjs = path.join(root, 'node_modules/pdfjs-dist');
+const pdfAssets = path.join(root, 'plugin/lib/pdfjs');
+await fs.mkdir(pdfAssets, { recursive: true });
+await fs.copyFile(path.join(pdfjs, 'build/pdf.min.mjs'), path.join(pdfAssets, 'pdf.mjs'));
+await fs.copyFile(path.join(pdfjs, 'build/pdf.worker.min.mjs'), path.join(pdfAssets, 'pdf.worker.mjs'));
+await fs.copyFile(path.join(pdfjs, 'LICENSE'), path.join(pdfAssets, 'LICENSE'));
+for (const resource of ['cmaps', 'standard_fonts', 'wasm']) {
+  await fs.cp(path.join(pdfjs, resource), path.join(pdfAssets, resource), { recursive: true });
+}
 await build({ ...common, entryPoints: [path.join(root, 'src/server.ts')], outfile: path.join(root, 'dist/server.mjs') });
 await build({ ...common, entryPoints: [path.join(root, 'scripts/doctor.mjs')], outfile: path.join(root, 'dist/doctor.mjs') });
 await build({ ...common, entryPoints: [path.join(root, 'scripts/service-control.mjs')], outfile: path.join(root, 'dist/service-control.mjs') });

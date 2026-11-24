@@ -77,6 +77,7 @@ export interface ServiceConfig extends JsonRecord {
 
 export interface DocumentPreviewConfig {
   enabled: boolean;
+  allowPdfViewer?: boolean;
   pdfInfo?: string;
   pdfToPpm?: string;
   office?: string;

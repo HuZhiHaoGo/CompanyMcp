@@ -1,6 +1,8 @@
 import path from 'node:path';
 
 const DESKTOP_CONFIG = 'dsh-mcp-tbea-knowledge.json';
+export const DESKTOP_DEPLOYMENT_CONFIG = 'desktop-deployment.json';
+export const DESKTOP_CONFIG_TEMPLATE = 'config/example.json';
 
 export function desktopConfigLocations(harnessHome: string | undefined, packageRoot: string) {
   if (!harnessHome || !path.isAbsolute(harnessHome)) {

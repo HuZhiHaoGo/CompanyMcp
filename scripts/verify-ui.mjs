@@ -8,6 +8,7 @@ const root = path.resolve(import.meta.dirname, '..');
 const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'tbea-ui-'));
 const config = JSON.parse(await fs.readFile(path.join(root, 'config/example.json'), 'utf8'));
 config.port = 17869; config.serviceToken = 'u'.repeat(64); config.dataDirectory = directory;
+config.documentPreview = { enabled: true, allowPdfViewer: true, converters: {} };
 const app = await createKnowledgeServer(config, { demoDirectory: path.join(root, 'dist/demo') });
 let browser;
 try {
@@ -196,6 +197,41 @@ try {
     await page.close();
     console.log(`${name}: document filter, continuous preview, lazy page loading and return OK`);
   }
+  const dual = await browser.newPage();
+  const base = 'http://127.0.0.1:17869';
+  let openedDocuments = 0;
+  let countFails = true;
+  const outside = [];
+  await dual.route('**/*', route => {
+    if (new URL(route.request().url()).origin === base) return route.continue();
+    outside.push(route.request().url());
+    return route.abort();
+  });
+  await dual.route('**/demo/library/open?**', async route => {
+    openedDocuments++;
+    const response = await route.fetch();
+    const value = await response.json();
+    delete value.pages;
+    await route.fulfill({ json: value });
+  });
+  await dual.route('**/demo/library/page-count?**', route => countFails
+    ? route.fulfill({ status: 400, json: { message: '无法读取文档页数' } }) : route.continue());
+  await dual.goto(`${base}/demo?library`);
+  await dual.getByRole('button', { name: /预览演示\.pdf/ }).click();
+  await dual.getByText('无法读取文档页数', { exact: true }).waitFor();
+  await dual.getByRole('button', { name: 'PDF 查看器', exact: true }).click();
+  await dual.waitForFunction(() => {
+    const canvas = document.querySelector('.tbea-library-pdf-page');
+    if (!canvas) return false;
+    const [red, green, blue, alpha] = canvas.getContext('2d').getImageData(Math.round(canvas.width * 0.2), Math.round(canvas.height * 0.145), 1, 1).data;
+    return alpha === 255 && blue > green && green > red;
+  });
+  countFails = false;
+  await dual.getByRole('button', { name: '图片预览（Poppler）', exact: true }).click();
+  await dual.getByRole('img', { name: '原文第 1 页', exact: true }).waitFor();
+  if (openedDocuments !== 1 || outside.length) throw new Error('Viewer switch re-opened the document or requested external resources');
+  await dual.close();
+  console.log('PDF viewer: Poppler failure recovery, offline worker, and shared document passed');
 } finally {
   await browser?.close(); await app.close();
   if (directory.startsWith(path.join(os.tmpdir(), 'tbea-ui-'))) await fs.rm(directory, { recursive: true, force: true });

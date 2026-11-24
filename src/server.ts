@@ -11,6 +11,7 @@ import { readConfig } from './config.ts';
 import { KnowledgeService, TOOLS, toolDescription } from './knowledge.ts';
 import { LibraryBrowser } from './library-browser.ts';
 import { PlatformError } from './platform.ts';
+import { pdfViewerAsset } from './pdf-preview.ts';
 import { configIdentity,SERVICE_VERSION,RUNTIME_PROTOCOL } from './runtime.ts';
 import { hasCode, isRecord } from './contracts.ts';
 import type { Fetcher, ServiceConfig } from './contracts.ts';
@@ -19,6 +20,7 @@ import type { SemanticModel } from './semantic.ts';
 interface ServerOptions {
   managed?: boolean;
   demoDirectory?: string;
+  pdfAssetsDirectory?: string;
   onPause?: () => void;
   fetcher?: Fetcher;
   takeSemanticModel?: (requestId: string) => SemanticModel | undefined;
@@ -72,6 +74,12 @@ export async function createKnowledgeServer(config: ServiceConfig, options: Serv
           return send(res, 200, await service.snapshot(result.view.snapshotId));
         }
         if (url.pathname === '/demo/asset') { const image = await service.image(url.searchParams.get('snapshotId'), url.searchParams.get('imageId'), controller.signal); return send(res, 200, image.bytes, image.type); }
+        if (url.pathname === '/demo/pdf-asset' && config.documentPreview?.enabled && config.documentPreview.allowPdfViewer) {
+          const root = options.pdfAssetsDirectory ?? fileURLToPath(new URL('../plugin/lib/pdfjs/', import.meta.url));
+          const asset = await pdfViewerAsset(root, url.searchParams.get('asset'));
+          res.writeHead(asset.status, Object.fromEntries(asset.headers));
+          return res.end(Buffer.from(await asset.arrayBuffer()));
+        }
         if (url.pathname.startsWith('/demo/library/')) { await libraryResponse(url, '/demo/library', controller.signal, res); return; }
         const files: Record<string, string> = { '/demo': 'index.html', '/demo/': 'index.html', '/demo/demo.js': 'demo.js', '/demo/demo.css': 'demo.css' };
         const name = files[url.pathname];
@@ -129,7 +137,9 @@ export async function createKnowledgeServer(config: ServiceConfig, options: Serv
       case '/catalog': return send(res, 200, await library.catalog(signal));
       case '/documents': return send(res, 200, await library.documents(args.get('libraryId'), signal));
       case '/open': return send(res, 200, await library.open(args.get('libraryId'), args.get('documentId'), signal));
+      case '/page-count': return send(res, 200, await library.pageCount(args.get('previewId'), signal));
       case '/page': return send(res, 200, await library.page(args.get('previewId'), args.get('page'), signal), 'image/png');
+      case '/pdf-range': return send(res, 200, await library.pdfRange(args.get('previewId'), args.get('begin'), args.get('end'), signal), 'application/octet-stream');
       default: return send(res, 404, { error: '未找到接口' });
     }
   }

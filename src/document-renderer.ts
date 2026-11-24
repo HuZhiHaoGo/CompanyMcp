@@ -129,7 +129,7 @@ async function convertOffice(input: string, directory: string, program: string, 
   return path.join(directory, `${path.parse(input).name}.pdf`);
 }
 
-export async function prepareDocument(settings: DocumentPreviewConfig, address: string, format: string, directory: string, signal: AbortSignal, fetcher: Fetcher = fetch) {
+export async function prepareDocumentPdf(settings: DocumentPreviewConfig, address: string, format: string, directory: string, signal: AbortSignal, fetcher: Fetcher = fetch) {
   const original = path.join(directory, `input.${format}`);
   await download(address, original, format, signal, fetcher);
   validateInput(await header(original), format);
@@ -147,12 +147,23 @@ export async function prepareDocument(settings: DocumentPreviewConfig, address: 
       }
     } finally { await fs.rm(original, { force: true }); }
   }
-  if (!isPdf(await header(pdf).catch(() => Buffer.alloc(0))) || (await fs.stat(pdf)).size > 300 * mb) {
+  const bytes = (await fs.stat(pdf).catch(() => undefined))?.size ?? 0;
+  if (!bytes || bytes > 300 * mb || !isPdf(await header(pdf).catch(() => Buffer.alloc(0)))) {
     throw new PlatformError('INVALID_CONVERSION', '没有生成可预览的文档，文件可能受保护或需要专用转换组件');
   }
+  return { pdf, bytes };
+}
+
+export async function readPageCount(settings: DocumentPreviewConfig, pdf: string, directory: string, signal: AbortSignal) {
   const info = await run(settings.pdfInfo!, [pdf], directory, signal, '无法读取文档页数，文件可能损坏或受密码保护');
   const pages = Number(/^Pages:\s+(\d+)\s*$/m.exec(info)?.[1]);
   if (!Number.isInteger(pages) || pages < 1 || pages > 3000) throw new PlatformError('INVALID_PAGE_COUNT', '文档预览支持 1 至 3000 页');
+  return pages;
+}
+
+export async function prepareDocument(settings: DocumentPreviewConfig, address: string, format: string, directory: string, signal: AbortSignal, fetcher: Fetcher = fetch) {
+  const { pdf } = await prepareDocumentPdf(settings, address, format, directory, signal, fetcher);
+  const pages = await readPageCount(settings, pdf, directory, signal);
   return { pdf, pages };
 }
 

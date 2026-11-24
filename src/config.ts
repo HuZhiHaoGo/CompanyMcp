@@ -124,6 +124,8 @@ function readSynonyms(value: unknown): EvidenceSynonym[] | undefined {
 async function readDocumentPreview(value: unknown, directory: string, { bundledPopplerBin, bundledOffice }: ConfigLocations): Promise<DocumentPreviewConfig | undefined> {
   if (value === undefined) return undefined;
   if (!isRecord(value) || typeof value.enabled !== 'boolean') throw new Error('documentPreview.enabled 必须为 true 或 false');
+  const { allowPdfViewer } = value;
+  if (allowPdfViewer !== undefined && typeof allowPdfViewer !== 'boolean') throw new Error('documentPreview.allowPdfViewer 必须为 true 或 false');
   function program(input: unknown, key: string) {
     if (input === undefined || input === '') return undefined;
     if (typeof input !== 'string' || !input.trim()) throw new Error(`documentPreview.${key} 必须为程序路径`);
@@ -167,7 +169,7 @@ async function readDocumentPreview(value: unknown, directory: string, { bundledP
     }
   }
   if (value.enabled && (!info || !ppm)) throw new Error('启用正式原文预览需要配置 pdfInfo 和 pdfToPpm');
-  return { enabled: value.enabled, pdfInfo: info, pdfToPpm: ppm, office: officeProgram, officeBundled, converters };
+  return { enabled: value.enabled, allowPdfViewer, pdfInfo: info, pdfToPpm: ppm, office: officeProgram, officeBundled, converters };
 }
 
 function readPlatform(raw: Record<string, unknown>, mode: ServiceConfig['mode']): PlatformConfig {

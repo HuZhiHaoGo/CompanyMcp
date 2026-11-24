@@ -9,6 +9,8 @@ import { execFile, spawn } from 'node:child_process';
 import { promisify } from 'node:util';
 import { fileURLToPath,pathToFileURL } from 'node:url';
 import { readConfig } from '../src/config.ts';
+import { DESKTOP_CONFIG_TEMPLATE, DESKTOP_DEPLOYMENT_CONFIG, desktopConfigLocations } from '../src/desktop-config.ts';
+import { initializeDesktopConfig } from '../src/desktop-initialization.ts';
 import { createKnowledgeServer } from '../src/server.ts';
 import { configIdentity,SERVICE_VERSION,RUNTIME_PROTOCOL } from '../src/runtime.ts';
 import { ServiceManager } from '../plugin/src/service-manager.mjs';
@@ -227,6 +229,46 @@ test('已有 BOM 配置升级初始化不覆盖凭证及自动启动偏好',asyn
   await fs.writeFile(filename,contents); await initialize(directory);
   assert.equal(await fs.readFile(filename,'utf8'),contents);
   assert.ok((await fs.readFile(path.join(directory,'plugin/cordis.patch.yml'),'utf8')).includes('configFile:'));
+});
+
+test('Desktop 首次并发初始化只发布一次完整配置，后续保留文件', async t => {
+  const { directory } = await fixture(t);
+  const packageRoot = path.join(directory, 'installed-plugin');
+  const deployment = path.join(packageRoot, DESKTOP_DEPLOYMENT_CONFIG);
+  const template = path.join(packageRoot, DESKTOP_CONFIG_TEMPLATE);
+  const sources = [deployment, template];
+  const locations = desktopConfigLocations(path.join(directory, 'actual Harness'), packageRoot);
+  await fs.mkdir(path.dirname(template), { recursive: true });
+  await assert.rejects(initializeDesktopConfig(locations, sources), /也找不到初始化来源/);
+  await assert.rejects(fs.stat(locations.filename), { code: 'ENOENT' });
+
+  const seed = JSON.parse(await fs.readFile(new URL('../config/example.json', import.meta.url), 'utf8'));
+  delete seed.serviceToken;
+  seed.documentPreview.enabled = false;
+  seed.dataDirectory = '../data';
+  await fs.writeFile(template, JSON.stringify(seed));
+  await fs.writeFile(deployment, JSON.stringify({ ...seed, mode: 'live' }));
+  await assert.rejects(initializeDesktopConfig(locations, sources), /正式模式缺少 accessKey/);
+  await assert.rejects(fs.stat(locations.filename), { code: 'ENOENT' });
+
+  await fs.rm(deployment);
+  const results = await Promise.all(Array.from({ length: 8 }, () => initializeDesktopConfig(locations, sources)));
+  const contents = await fs.readFile(locations.filename, 'utf8');
+  const saved = JSON.parse(contents);
+  assert.equal(results.filter(result => result.written).length, 1);
+  assert.match(saved.serviceToken, /^[a-f0-9]{64}$/);
+  assert.ok(results.every(result => result.config.serviceToken === saved.serviceToken));
+  assert.equal(saved.dataDirectory, undefined);
+  assert.deepEqual(await fs.readdir(path.dirname(locations.filename)), [path.basename(locations.filename)]);
+
+  // 新安装包里的配置变化也不覆盖已有配置。
+  await fs.writeFile(template, '{ invalid json');
+  assert.equal((await initializeDesktopConfig(locations, sources)).written, false);
+  assert.equal(await fs.readFile(locations.filename, 'utf8'), contents);
+  await fs.writeFile(deployment, JSON.stringify({ ...seed, serviceToken: 'r'.repeat(64) }));
+  const replaced = await initializeDesktopConfig(locations, sources, true);
+  assert.equal(replaced.written, true);
+  assert.equal(JSON.parse(await fs.readFile(locations.filename, 'utf8')).serviceToken, 'r'.repeat(64));
 });
 
 test('插件复制到 DSH profile 后仍可自动启动、检索并找到项目演示资源',async t=>{

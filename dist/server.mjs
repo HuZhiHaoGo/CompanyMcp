@@ -3264,8 +3264,8 @@ var require_utils = __commonJS({
       }
       return ind;
     }
-    function removeDotSegments(path8) {
-      let input = path8;
+    function removeDotSegments(path9) {
+      let input = path9;
       const output = [];
       let nextSlash = -1;
       let len = 0;
@@ -3339,11 +3339,11 @@ var require_utils = __commonJS({
       }
       return output.join("");
     }
-    function removeDotSegmentsRelative(path8) {
-      if (path8 === "" || path8[0] === "/") {
-        return removeDotSegments(path8);
+    function removeDotSegmentsRelative(path9) {
+      if (path9 === "" || path9[0] === "/") {
+        return removeDotSegments(path9);
       }
-      const segments = path8.split("/");
+      const segments = path9.split("/");
       const last = segments.length - 1;
       const output = [];
       let trailingDirectory = false;
@@ -3706,8 +3706,8 @@ var require_schemes = __commonJS({
       }
       if (wsComponent.resourceName) {
         const queryIndex = wsComponent.resourceName.indexOf("?");
-        const path8 = queryIndex === -1 ? wsComponent.resourceName : wsComponent.resourceName.slice(0, queryIndex);
-        wsComponent.path = path8 && path8 !== "/" ? path8 : void 0;
+        const path9 = queryIndex === -1 ? wsComponent.resourceName : wsComponent.resourceName.slice(0, queryIndex);
+        wsComponent.path = path9 && path9 !== "/" ? path9 : void 0;
         wsComponent.query = queryIndex === -1 ? void 0 : wsComponent.resourceName.slice(queryIndex + 1);
         wsComponent.resourceName = void 0;
       }
@@ -7244,12 +7244,12 @@ var require_dist = __commonJS({
         throw new Error(`Unknown format "${name2}"`);
       return f;
     };
-    function addFormats(ajv, list3, fs7, exportName) {
+    function addFormats(ajv, list3, fs8, exportName) {
       var _a5;
       var _b;
       (_a5 = (_b = ajv.opts.code).formats) !== null && _a5 !== void 0 ? _a5 : _b.formats = (0, codegen_1._)`require("ajv-formats/dist/formats").${exportName}`;
       for (const f of list3)
-        ajv.addFormat(f, fs7[f]);
+        ajv.addFormat(f, fs8[f]);
     }
     module.exports = exports = formatsPlugin;
     Object.defineProperty(exports, "__esModule", { value: true });
@@ -22223,8 +22223,8 @@ var require_punycode = __commonJS({
 
 // src/server.ts
 import http from "node:http";
-import fs6 from "node:fs/promises";
-import path7 from "node:path";
+import fs7 from "node:fs/promises";
+import path8 from "node:path";
 import { fileURLToPath } from "node:url";
 import { timingSafeEqual } from "node:crypto";
 
@@ -22465,10 +22465,10 @@ function mergeDefs(...defs) {
 function cloneDef(schema) {
   return mergeDefs(schema._zod.def);
 }
-function getElementAtPath(obj, path8) {
-  if (!path8)
+function getElementAtPath(obj, path9) {
+  if (!path9)
     return obj;
-  return path8.reduce((acc, key) => acc?.[key], obj);
+  return path9.reduce((acc, key) => acc?.[key], obj);
 }
 function promiseAllObject(promisesObj) {
   const keys = Object.keys(promisesObj);
@@ -22808,11 +22808,11 @@ function explicitlyAborted(x, startIndex = 0) {
   }
   return false;
 }
-function prefixIssues(path8, issues) {
+function prefixIssues(path9, issues) {
   return issues.map((iss) => {
     var _a5;
     (_a5 = iss).path ?? (_a5.path = []);
-    iss.path.unshift(path8);
+    iss.path.unshift(path9);
     return iss;
   });
 }
@@ -23270,16 +23270,16 @@ function flattenError(error3, mapper = (issue2) => issue2.message) {
 }
 function formatError(error3, mapper = (issue2) => issue2.message) {
   const fieldErrors = { _errors: [] };
-  const processError = (error4, path8 = []) => {
+  const processError = (error4, path9 = []) => {
     for (const issue2 of error4.issues) {
       if (issue2.code === "invalid_union" && issue2.errors.length) {
-        issue2.errors.map((issues) => processError({ issues }, [...path8, ...issue2.path]));
+        issue2.errors.map((issues) => processError({ issues }, [...path9, ...issue2.path]));
       } else if (issue2.code === "invalid_key") {
-        processError({ issues: issue2.issues }, [...path8, ...issue2.path]);
+        processError({ issues: issue2.issues }, [...path9, ...issue2.path]);
       } else if (issue2.code === "invalid_element") {
-        processError({ issues: issue2.issues }, [...path8, ...issue2.path]);
+        processError({ issues: issue2.issues }, [...path9, ...issue2.path]);
       } else {
-        const fullpath = [...path8, ...issue2.path];
+        const fullpath = [...path9, ...issue2.path];
         if (fullpath.length === 0) {
           fieldErrors._errors.push(mapper(issue2));
         } else {
@@ -34181,6 +34181,8 @@ function readSynonyms(value) {
 async function readDocumentPreview(value, directory, { bundledPopplerBin, bundledOffice }) {
   if (value === void 0) return void 0;
   if (!isRecord(value) || typeof value.enabled !== "boolean") throw new Error("documentPreview.enabled \u5FC5\u987B\u4E3A true \u6216 false");
+  const { allowPdfViewer } = value;
+  if (allowPdfViewer !== void 0 && typeof allowPdfViewer !== "boolean") throw new Error("documentPreview.allowPdfViewer \u5FC5\u987B\u4E3A true \u6216 false");
   function program(input, key) {
     if (input === void 0 || input === "") return void 0;
     if (typeof input !== "string" || !input.trim()) throw new Error(`documentPreview.${key} \u5FC5\u987B\u4E3A\u7A0B\u5E8F\u8DEF\u5F84`);
@@ -34222,7 +34224,7 @@ async function readDocumentPreview(value, directory, { bundledPopplerBin, bundle
     }
   }
   if (value.enabled && (!info || !ppm)) throw new Error("\u542F\u7528\u6B63\u5F0F\u539F\u6587\u9884\u89C8\u9700\u8981\u914D\u7F6E pdfInfo \u548C pdfToPpm");
-  return { enabled: value.enabled, pdfInfo: info, pdfToPpm: ppm, office: officeProgram, officeBundled, converters };
+  return { enabled: value.enabled, allowPdfViewer, pdfInfo: info, pdfToPpm: ppm, office: officeProgram, officeBundled, converters };
 }
 function readPlatform(raw, mode) {
   function routeFor(key, fallback) {
@@ -52358,7 +52360,7 @@ function transformGfmAutolinkLiterals(tree) {
     { ignore: ["link", "linkReference"] }
   );
 }
-function findUrl(_, protocol, domain2, path8, match2) {
+function findUrl(_, protocol, domain2, path9, match2) {
   let prefix = "";
   if (!previous2(match2)) {
     return false;
@@ -52371,7 +52373,7 @@ function findUrl(_, protocol, domain2, path8, match2) {
   if (!isCorrectDomain(domain2)) {
     return false;
   }
-  const parts = splitUrl(domain2 + path8);
+  const parts = splitUrl(domain2 + path9);
   if (!parts[0]) return false;
   const result = {
     type: "link",
@@ -54120,9 +54122,9 @@ var KnowledgeService = class {
 
 // src/library-browser.ts
 import { randomUUID as randomUUID5 } from "node:crypto";
-import fs5 from "node:fs/promises";
+import fs6 from "node:fs/promises";
 import os from "node:os";
-import path6 from "node:path";
+import path7 from "node:path";
 
 // src/documents.ts
 var actions = "/openapi/v1/knowledgeBase?Action=";
@@ -58715,8 +58717,8 @@ function trimCharacterEnd(str2, char) {
 function unicodeEscape(str2) {
   return str2.replace(/[\s\S]/g, (c) => "\\u" + c.charCodeAt().toString(16).padStart(4, "0"));
 }
-function get(obj, path8) {
-  for (const key of path8) {
+function get(obj, path9) {
+  for (const key of path9) {
     if (!obj) {
       return void 0;
     }
@@ -59917,8 +59919,8 @@ function withBrackets(str2, brackets) {
   const rbr = typeof brackets[1] === "string" ? brackets[1] : "]";
   return lbr + str2 + rbr;
 }
-function pathRewrite(path8, rewriter, baseUrl, metadata, elem) {
-  const modifiedPath = typeof rewriter === "function" ? rewriter(path8, metadata, elem) : path8;
+function pathRewrite(path9, rewriter, baseUrl, metadata, elem) {
+  const modifiedPath = typeof rewriter === "function" ? rewriter(path9, metadata, elem) : path9;
   return modifiedPath[0] === "/" && baseUrl ? trimCharacterEnd(baseUrl, "/") + modifiedPath : modifiedPath;
 }
 function formatImage(elem, walk, builder, formatOptions) {
@@ -60242,9 +60244,9 @@ function handleDeprecatedOptions(options) {
     options.selectors.push(...tagDefinitions);
     options.selectors = mergeDuplicatesPreferLast(options.selectors, ((s) => s.selector));
   }
-  function set(obj, path8, value) {
-    const valueKey = path8.pop();
-    for (const key of path8) {
+  function set(obj, path9, value) {
+    const valueKey = path9.pop();
+    for (const key of path9) {
       let nested = obj[key];
       if (!nested) {
         nested = {};
@@ -67245,7 +67247,7 @@ async function convertOffice(input, directory, program, bundled, signal) {
   else await convert4(program);
   return path5.join(directory, `${path5.parse(input).name}.pdf`);
 }
-async function prepareDocument(settings, address, format, directory, signal, fetcher = fetch) {
+async function prepareDocumentPdf(settings, address, format, directory, signal, fetcher = fetch) {
   const original = path5.join(directory, `input.${format}`);
   await download(address, original, format, signal, fetcher);
   validateInput(await header(original), format);
@@ -67265,13 +67267,17 @@ async function prepareDocument(settings, address, format, directory, signal, fet
       await fs4.rm(original, { force: true });
     }
   }
-  if (!isPdf(await header(pdf).catch(() => Buffer.alloc(0))) || (await fs4.stat(pdf)).size > 300 * mb) {
+  const bytes = (await fs4.stat(pdf).catch(() => void 0))?.size ?? 0;
+  if (!bytes || bytes > 300 * mb || !isPdf(await header(pdf).catch(() => Buffer.alloc(0)))) {
     throw new PlatformError("INVALID_CONVERSION", "\u6CA1\u6709\u751F\u6210\u53EF\u9884\u89C8\u7684\u6587\u6863\uFF0C\u6587\u4EF6\u53EF\u80FD\u53D7\u4FDD\u62A4\u6216\u9700\u8981\u4E13\u7528\u8F6C\u6362\u7EC4\u4EF6");
   }
+  return { pdf, bytes };
+}
+async function readPageCount(settings, pdf, directory, signal) {
   const info = await run(settings.pdfInfo, [pdf], directory, signal, "\u65E0\u6CD5\u8BFB\u53D6\u6587\u6863\u9875\u6570\uFF0C\u6587\u4EF6\u53EF\u80FD\u635F\u574F\u6216\u53D7\u5BC6\u7801\u4FDD\u62A4");
   const pages = Number(/^Pages:\s+(\d+)\s*$/m.exec(info)?.[1]);
   if (!Number.isInteger(pages) || pages < 1 || pages > 3e3) throw new PlatformError("INVALID_PAGE_COUNT", "\u6587\u6863\u9884\u89C8\u652F\u6301 1 \u81F3 3000 \u9875");
-  return { pdf, pages };
+  return pages;
 }
 async function renderDocumentPage(settings, pdf, page, directory, signal) {
   const prefix = path5.join(directory, `page-${page}-${randomUUID4()}`);
@@ -67287,6 +67293,56 @@ async function renderDocumentPage(settings, pdf, page, directory, signal) {
 }
 var mockDocumentPage = () => mockImage().bytes;
 
+// src/pdf-preview.ts
+import fs5 from "node:fs/promises";
+import path6 from "node:path";
+async function pdfViewerAsset(root, name2) {
+  if (!name2 || !["pdf.mjs", "pdf.worker.mjs"].includes(name2) && !/^(?:cmaps|standard_fonts|wasm)\/[a-zA-Z0-9][a-zA-Z0-9_.-]*$/u.test(name2)) {
+    return new Response(null, { status: 404 });
+  }
+  const bytes = await fs5.readFile(path6.join(root, name2)).catch((error3) => {
+    if (error3.code !== "ENOENT") throw error3;
+  });
+  if (!bytes) return new Response(null, { status: 404 });
+  return new Response(new Uint8Array(bytes), { headers: {
+    "content-type": /\.m?js$/u.test(name2) ? "text/javascript; charset=utf-8" : "application/octet-stream",
+    "cache-control": "no-store",
+    "x-content-type-options": "nosniff"
+  } });
+}
+function samplePreviewPdf(pages) {
+  const kids = Array.from({ length: pages }, (_, index2) => `${index2 + 3} 0 R`);
+  const drawing = "0.12 0.32 0.55 rg 45 700 450 34 re f\n0.76 0.82 0.9 rg 45 646 400 10 re f 45 619 440 10 re f\n";
+  const objects = [
+    "<< /Type /Catalog /Pages 2 0 R >>",
+    `<< /Type /Pages /Kids [${kids.join(" ")}] /Count ${pages} >>`,
+    ...kids.map(() => `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources <<>> /Contents ${pages + 3} 0 R >>`),
+    `<< /Length ${drawing.length} >>
+stream
+${drawing}endstream`
+  ];
+  let text6 = "%PDF-1.4\n";
+  const offsets = ["0000000000 65535 f\r\n"];
+  for (const [index2, object3] of objects.entries()) {
+    offsets.push(`${String(text6.length).padStart(10, "0")} 00000 n\r
+`);
+    text6 += `${index2 + 1} 0 obj
+${object3}
+endobj
+`;
+  }
+  const xref = text6.length;
+  text6 += `xref
+0 ${offsets.length}
+${offsets.join("")}trailer
+<< /Size ${offsets.length} /Root 1 0 R >>
+startxref
+${xref}
+%%EOF
+`;
+  return Buffer.from(text6, "ascii");
+}
+
 // src/library-browser.ts
 var idleMs = 10 * 60 * 1e3;
 var maxPreviews = 3;
@@ -67296,6 +67352,7 @@ var LibraryBrowser = class {
   previews = /* @__PURE__ */ new Map();
   opening = new SharedTasks();
   pageTasks = new SharedTasks();
+  pageCounts = new SharedTasks();
   listing = new SharedTasks();
   gate = new SearchGate(2, 50);
   pending = /* @__PURE__ */ new Set();
@@ -67355,7 +67412,7 @@ var LibraryBrowser = class {
     for (const item of entries) {
       if (item.renders || Date.now() - item.touched < idleMs && (!removeOldest || this.previews.size + this.reservations < maxPreviews)) continue;
       this.previews.delete(item.id);
-      if (item.directory) await fs5.rm(item.directory, { recursive: true, force: true, maxRetries: 3 }).catch(() => {
+      if (item.directory) await fs6.rm(item.directory, { recursive: true, force: true, maxRetries: 3 }).catch(() => {
       });
     }
   }
@@ -67379,38 +67436,77 @@ var LibraryBrowser = class {
       this.reservations++;
       let directory;
       try {
-        directory = this.mock ? void 0 : await fs5.mkdtemp(path6.join(os.tmpdir(), "tbea-preview-"));
-        const data = directory && address ? await prepareDocument(this.config.documentPreview, address, doc.info.format, directory, shared, this.fetcher) : { pages: ["pdf", "doc", "docx", "ppt", "pptx", "ofd", "dps", "dpsx", "wps"].includes(doc.info.format) ? 4 : 1, pdf: void 0 };
+        directory = this.mock ? void 0 : await fs6.mkdtemp(path7.join(os.tmpdir(), "tbea-preview-"));
+        const settings = this.config.documentPreview;
+        const allowPdf = settings?.enabled && settings.allowPdfViewer;
+        const entry = { id: randomUUID5(), library, documentId, directory, touched: Date.now(), renders: 0 };
+        if (directory && address) {
+          const data = await prepareDocumentPdf(settings, address, doc.info.format, directory, shared, this.fetcher);
+          entry.pdf = data.pdf;
+          if (allowPdf) entry.pdfBytes = data.bytes;
+          else entry.pages = await readPageCount(settings, data.pdf, directory, shared);
+        } else {
+          entry.pages = ["pdf", "doc", "docx", "ppt", "pptx", "ofd", "dps", "dpsx", "wps"].includes(doc.info.format) ? 4 : 1;
+          if (allowPdf) {
+            entry.sample = samplePreviewPdf(entry.pages);
+            entry.pdfBytes = entry.sample.length;
+          }
+        }
         shared.throwIfAborted();
-        const entry = { id: randomUUID5(), library, documentId, directory, ...data, touched: Date.now(), renders: 0 };
+        entry.touched = Date.now();
         this.previews.set(entry.id, entry);
         this.timer ??= setInterval(() => {
           void this.track(this.prune());
         }, 6e4).unref();
         return entry;
       } catch (error3) {
-        if (directory) await fs5.rm(directory, { recursive: true, force: true, maxRetries: 3 }).catch(() => {
+        if (directory) await fs6.rm(directory, { recursive: true, force: true, maxRetries: 3 }).catch(() => {
         });
         throw error3;
       } finally {
         this.reservations--;
       }
     })));
-    return { previewId: preview.id, pages: preview.pages };
+    return { previewId: preview.id, pages: preview.pages, pdfBytes: preview.pdfBytes };
   }
-  async page(id, index2, signal) {
+  async withPreview(id, signal, task) {
     signal = this.operation(signal, 4e4);
     const preview = id ? this.previews.get(id) : void 0;
     if (!preview || Date.now() - preview.touched >= idleMs) throw new PlatformError("PREVIEW_NOT_FOUND", "\u9884\u89C8\u5DF2\u8FC7\u671F\uFF0C\u8BF7\u91CD\u65B0\u6253\u5F00\u6587\u6863");
-    const number3 = Number(index2);
-    if (!Number.isInteger(number3) || number3 < 1 || number3 > preview.pages) throw new PlatformError("INVALID_PREVIEW_PAGE", "\u9875\u7801\u8D85\u51FA\u6587\u6863\u8303\u56F4");
     preview.renders++;
-    try {
-      await this.authorize(preview.library, signal);
-      preview.touched = Date.now();
+    return this.track((async () => {
+      try {
+        await this.authorize(preview.library, signal);
+        preview.touched = Date.now();
+        return await task(preview, signal);
+      } finally {
+        preview.renders--;
+      }
+    })());
+  }
+  countPages(preview, signal) {
+    if (preview.pages !== void 0) return preview.pages;
+    const { pdf, directory } = preview;
+    if (!pdf || !directory) throw new PlatformError("PREVIEW_NOT_FOUND", "\u9884\u89C8\u5DF2\u8FC7\u671F\uFF0C\u8BF7\u91CD\u65B0\u6253\u5F00\u6587\u6863");
+    return this.pageCounts.run(preview.id, signal, (shared) => this.track(this.gate.run(shared, async () => {
+      preview.renders++;
+      try {
+        return preview.pages = await readPageCount(this.config.documentPreview, pdf, directory, shared);
+      } finally {
+        preview.renders--;
+      }
+    })));
+  }
+  async pageCount(id, signal) {
+    return { pages: await this.withPreview(id, signal, (preview, active) => this.countPages(preview, active)) };
+  }
+  async page(id, index2, signal) {
+    return this.withPreview(id, signal, async (preview, active) => {
+      const number3 = Number(index2);
+      if (!Number.isInteger(number3) || number3 < 1 || number3 > await this.countPages(preview, active)) throw new PlatformError("INVALID_PREVIEW_PAGE", "\u9875\u7801\u8D85\u51FA\u6587\u6863\u8303\u56F4");
       if (!preview.pdf || !preview.directory) return mockDocumentPage();
       const { pdf, directory } = preview;
-      return await this.pageTasks.run(`${preview.id}:${number3}`, signal, (shared) => {
+      return this.pageTasks.run(`${preview.id}:${number3}`, active, (shared) => {
         return this.track(this.gate.run(shared, async () => {
           preview.renders++;
           try {
@@ -67420,15 +67516,41 @@ var LibraryBrowser = class {
           }
         }));
       });
-    } finally {
-      preview.renders--;
+    });
+  }
+  async pdfRange(id, begin, end, signal) {
+    if (!this.config.documentPreview?.enabled || !this.config.documentPreview.allowPdfViewer) {
+      throw new PlatformError("PDF_VIEWER_DISABLED", "\u7BA1\u7406\u5458\u672A\u542F\u7528 PDF \u67E5\u770B\u5668");
     }
+    return this.withPreview(id, signal, (preview, active) => this.gate.run(active, async () => {
+      const from = Number(begin);
+      const to = Number(end);
+      if (!begin || !end || !/^\d+$/u.test(begin) || !/^\d+$/u.test(end) || !Number.isSafeInteger(from) || !Number.isSafeInteger(to) || to <= from || to - from > 1024 * 1024 || preview.pdfBytes === void 0 || to > preview.pdfBytes) {
+        throw new PlatformError("INVALID_PDF_RANGE", "PDF \u6570\u636E\u533A\u95F4\u65E0\u6548");
+      }
+      if (preview.sample) return preview.sample.subarray(from, to);
+      if (!preview.pdf) throw new PlatformError("PREVIEW_NOT_FOUND", "\u9884\u89C8\u5DF2\u8FC7\u671F\uFF0C\u8BF7\u91CD\u65B0\u6253\u5F00\u6587\u6863");
+      const handle = await fs6.open(preview.pdf, "r");
+      try {
+        const buffer = Buffer.alloc(to - from);
+        let offset = 0;
+        while (offset < buffer.length) {
+          active.throwIfAborted();
+          const { bytesRead } = await handle.read(buffer, offset, buffer.length - offset, from + offset);
+          if (bytesRead === 0) throw new PlatformError("PREVIEW_NOT_FOUND", "\u9884\u89C8\u5185\u5BB9\u5DF2\u53D8\u66F4\uFF0C\u8BF7\u91CD\u65B0\u6253\u5F00\u6587\u6863");
+          offset += bytesRead;
+        }
+        return buffer;
+      } finally {
+        await handle.close();
+      }
+    }));
   }
   async close() {
     this.lifetime.abort();
     if (this.timer) clearInterval(this.timer);
     await Promise.allSettled([...this.pending]);
-    await Promise.all([...this.previews.values()].map((item) => item.directory && fs5.rm(item.directory, { recursive: true, force: true, maxRetries: 3 }).catch(() => {
+    await Promise.all([...this.previews.values()].map((item) => item.directory && fs6.rm(item.directory, { recursive: true, force: true, maxRetries: 3 }).catch(() => {
     })));
     this.previews.clear();
   }
@@ -67436,7 +67558,7 @@ var LibraryBrowser = class {
 
 // src/runtime.ts
 import { createHmac } from "node:crypto";
-var SERVICE_VERSION = "0.11.7";
+var SERVICE_VERSION = "0.11.10";
 var RUNTIME_PROTOCOL = "tbea-runtime/v1";
 function canonical(value) {
   if (Array.isArray(value)) return value.map(canonical);
@@ -67511,6 +67633,12 @@ async function createKnowledgeServer(config2, options = {}) {
           const image = await service.image(url.searchParams.get("snapshotId"), url.searchParams.get("imageId"), controller.signal);
           return send(res, 200, image.bytes, image.type);
         }
+        if (url.pathname === "/demo/pdf-asset" && config2.documentPreview?.enabled && config2.documentPreview.allowPdfViewer) {
+          const root2 = options.pdfAssetsDirectory ?? fileURLToPath(new URL("../plugin/lib/pdfjs/", import.meta.url));
+          const asset = await pdfViewerAsset(root2, url.searchParams.get("asset"));
+          res.writeHead(asset.status, Object.fromEntries(asset.headers));
+          return res.end(Buffer.from(await asset.arrayBuffer()));
+        }
         if (url.pathname.startsWith("/demo/library/")) {
           await libraryResponse(url, "/demo/library", controller.signal, res);
           return;
@@ -67518,8 +67646,8 @@ async function createKnowledgeServer(config2, options = {}) {
         const files = { "/demo": "index.html", "/demo/": "index.html", "/demo/demo.js": "demo.js", "/demo/demo.css": "demo.css" };
         const name2 = files[url.pathname];
         if (!name2) return send(res, 404, { error: "\u672A\u627E\u5230\u8D44\u6E90" });
-        const root = options.demoDirectory || path7.join(path7.dirname(fileURLToPath(import.meta.url)), "demo");
-        const bytes = await fs6.readFile(path7.join(root, name2));
+        const root = options.demoDirectory || path8.join(path8.dirname(fileURLToPath(import.meta.url)), "demo");
+        const bytes = await fs7.readFile(path8.join(root, name2));
         return send(res, 200, bytes, name2.endsWith(".html") ? "text/html; charset=utf-8" : name2.endsWith(".css") ? "text/css" : "text/javascript");
       }
       if (!authorized(req, config2.serviceToken)) return send(res, 401, { error: "\u670D\u52A1\u53E3\u4EE4\u65E0\u6548" });
@@ -67584,8 +67712,12 @@ async function createKnowledgeServer(config2, options = {}) {
         return send(res, 200, await library.documents(args.get("libraryId"), signal));
       case "/open":
         return send(res, 200, await library.open(args.get("libraryId"), args.get("documentId"), signal));
+      case "/page-count":
+        return send(res, 200, await library.pageCount(args.get("previewId"), signal));
       case "/page":
         return send(res, 200, await library.page(args.get("previewId"), args.get("page"), signal), "image/png");
+      case "/pdf-range":
+        return send(res, 200, await library.pdfRange(args.get("previewId"), args.get("begin"), args.get("end"), signal), "application/octet-stream");
       default:
         return send(res, 404, { error: "\u672A\u627E\u5230\u63A5\u53E3" });
     }
@@ -67641,7 +67773,7 @@ async function main() {
     void app.close().then(() => process.exit(0));
   });
 }
-if (process.argv[1] && path7.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) main().catch((error3) => {
+if (process.argv[1] && path8.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) main().catch((error3) => {
   console.error(error3 instanceof Error ? error3.message : "\u542F\u52A8\u5931\u8D25");
   process.exitCode = 1;
 });

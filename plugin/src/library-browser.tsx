@@ -4,6 +4,8 @@ import { ArrowLeft, BookOpen, FileText, LoaderCircle, RotateCcw, Search } from '
 import type { LibraryBrowser as LibraryService } from '../../src/library-browser.ts';
 import type { documentRecord } from '../../src/documents.ts';
 import type { previewStatus } from '../../src/document-renderer.ts';
+import { displayPath } from './display-transport.mjs';
+import { PdfViewer } from './pdf-viewer.tsx';
 
 type LibraryRequests = {
   'library-catalog': {
@@ -22,6 +24,14 @@ type LibraryRequests = {
     args: { previewId: string; page: number };
     result: { bytes: Uint8Array<ArrayBuffer> };
   };
+  'library-page-count': {
+    args: { previewId: string };
+    result: Awaited<ReturnType<LibraryService['pageCount']>>;
+  };
+  'library-pdf-range': {
+    args: { previewId: string; begin: number; end: number };
+    result: { bytes: Uint8Array<ArrayBuffer> };
+  };
 };
 
 type LibraryAction = keyof LibraryRequests;
@@ -31,7 +41,6 @@ export type LibraryBridge = <T extends LibraryAction>(
 
 type Library = LibraryRequests['library-catalog']['result']['libraries'][number];
 type ListedDocument = LibraryRequests['library-documents']['result']['documents'][number];
-type Preview = LibraryRequests['library-open']['result'];
 type DocumentMetadata = NonNullable<ReturnType<typeof documentRecord>['info']>;
 type ReaderDocument = Pick<DocumentMetadata, 'id' | 'name'> & Partial<DocumentMetadata> & { preview?: ReturnType<typeof previewStatus> };
 
@@ -76,7 +85,7 @@ function Failure({ children, retry }: { children: ReactNode; retry: () => void }
   return <div className="tbea-library-state tbea-library-error" role="alert"><span>{children}</span><button type="button" className="tbea-library-button" onClick={retry}><RotateCcw size={14} />重试</button></div>;
 }
 
-export function LibraryBrowser({ bridge }: { bridge: LibraryBridge }) {
+export function LibraryBrowser({ bridge, pdfAssetPath }: { bridge: LibraryBridge; pdfAssetPath?: string }) {
   const directory = useLibraryRequest(bridge, 'library-catalog', {}, 'catalog');
   const libraries = directory.value?.libraries ?? [];
   const [selection, setSelection] = useState('');
@@ -85,12 +94,12 @@ export function LibraryBrowser({ bridge }: { bridge: LibraryBridge }) {
     <header className="tbea-library-title"><BookOpen size={18} aria-hidden="true" /><h1>知识库目录</h1>{directory.value?.demo && <span>演示</span>}</header>
     {directory.loading ? <Wait>正在读取知识库…</Wait> : directory.error ? <Failure retry={directory.retry}>{directory.error}</Failure>
       : !active ? <div className="tbea-library-state">当前项目没有可查看的知识库。</div>
-      : <LibraryContents key={active.id} library={active} libraries={libraries} select={setSelection} bridge={bridge} />}
+      : <LibraryContents key={active.id} library={active} libraries={libraries} select={setSelection} bridge={bridge} pdfAssetPath={pdfAssetPath} />}
   </section>;
 }
 
-function LibraryContents({ library, libraries, select, bridge }: {
-  library: Library; libraries: Library[]; select: (id: string) => void; bridge: LibraryBridge;
+function LibraryContents({ library, libraries, select, bridge, pdfAssetPath }: {
+  library: Library; libraries: Library[]; select: (id: string) => void; bridge: LibraryBridge; pdfAssetPath?: string;
 }) {
   const [filter, setFilter] = useState('');
   const [selected, setSelected] = useState<ListedDocument>();
@@ -117,7 +126,7 @@ function LibraryContents({ library, libraries, select, bridge }: {
         </button></li>)}
       </ul>
     </aside>
-    {selected ? <DocumentReader key={selected.id} bridge={bridge} libraryId={library.id} documentInfo={selected} close={() => setSelected(undefined)} />
+    {selected ? <DocumentReader key={selected.id} bridge={bridge} libraryId={library.id} documentInfo={selected} close={() => setSelected(undefined)} pdfAssetPath={pdfAssetPath} />
       : <div className="tbea-library-reader tbea-library-empty"><FileText size={24} aria-hidden="true" />选择一份文档查看基本信息和原文。</div>}
   </div>;
 }
@@ -127,24 +136,38 @@ function formatSize(bytes: number) {
   return bytes < 1024 * 1024 ? `${(bytes / 1024).toFixed(1)} KB` : `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-export function DocumentReader({ bridge, libraryId, documentInfo, close, requestPreview, backLabel = '返回文档目录' }: {
+export function DocumentReader({ bridge, libraryId, documentInfo, close, requestPreview, pdfAssetPath = displayPath.slice(1), backLabel = '返回文档目录' }: {
   bridge: LibraryBridge; libraryId: string; documentInfo: ReaderDocument;
-  close: () => void; requestPreview?: boolean; backLabel?: string;
+  close: () => void; requestPreview?: boolean; pdfAssetPath?: string; backLabel?: string;
 }) {
   const { id, name, format, status, createdAt, bytes, preview } = documentInfo;
   const canOpen = requestPreview ?? (preview === 'available');
   const state = useLibraryRequest(bridge, 'library-open', { libraryId, documentId: id }, canOpen ? JSON.stringify([libraryId, id]) : undefined);
+  const [usePdf, setUsePdf] = useState(false);
+  const opened = state.value;
+  const pdfMode = usePdf && Boolean(opened?.pdfBytes);
+  const count = useLibraryRequest(bridge, 'library-page-count', { previewId: opened?.previewId ?? '' },
+    opened && !pdfMode && opened.pages === undefined ? opened.previewId : undefined);
+  const pages = opened?.pages ?? count.value?.pages;
   const facts = [format?.toUpperCase(), bytes != null ? formatSize(bytes) : undefined, createdAt ? new Date(createdAt).toLocaleDateString('zh-CN') : undefined, status ? statusLabels[status] ?? status : undefined].filter(Boolean);
   return <article className="tbea-library-reader" aria-label="原文预览">
-    <div className="tbea-library-reader-heading"><button type="button" className="tbea-library-button" aria-label={backLabel} onClick={close}><ArrowLeft size={16} /></button><div><h2>{name}</h2>{facts.length > 0 && <p>{facts.join(' · ')}</p>}</div>{state.value && <span className="tbea-library-page-count">{state.value.pages} 页</span>}</div>
+    <div className="tbea-library-reader-heading"><button type="button" className="tbea-library-button" aria-label={backLabel} onClick={close}><ArrowLeft size={16} /></button><div><h2>{name}</h2>{facts.length > 0 && <p>{facts.join(' · ')}</p>}</div>{!pdfMode && pages !== undefined && <span className="tbea-library-page-count">{pages} 页</span>}</div>
+    {opened?.pdfBytes && <div className="tbea-library-viewers" role="group" aria-label="原文预览方式">
+      <button type="button" className="tbea-library-button" aria-pressed={!pdfMode} onClick={() => setUsePdf(false)}>图片预览（Poppler）</button>
+      <button type="button" className="tbea-library-button" aria-pressed={pdfMode} onClick={() => setUsePdf(true)}>PDF 查看器</button>
+    </div>}
     {state.loading && <Wait>正在准备原文预览…</Wait>}
     {state.error && <Failure retry={state.retry}>{state.error}</Failure>}
     {preview && preview !== 'available' && <div className="tbea-library-state">{states[preview]}。</div>}
-    {state.value && <PreviewPages key={state.value.previewId} bridge={bridge} {...state.value} restart={state.retry} />}
+    {opened && (pdfMode && opened.pdfBytes
+      ? <PdfViewer key={opened.previewId} bridge={bridge} previewId={opened.previewId} bytes={opened.pdfBytes} assetPath={pdfAssetPath} restart={state.retry} />
+      : pages !== undefined ? <PreviewPages key={opened.previewId} bridge={bridge} previewId={opened.previewId} pages={pages} restart={state.retry} />
+        : count.error ? <Failure retry={count.error.includes('预览已过期') ? state.retry : count.retry}>{count.error}</Failure>
+          : <Wait>正在读取文档页数…</Wait>)}
   </article>;
 }
 
-function PreviewPages({ bridge, previewId, pages, restart }: Preview & { bridge: LibraryBridge; restart: () => void }) {
+function PreviewPages({ bridge, previewId, pages, restart }: { previewId: string; pages: number; bridge: LibraryBridge; restart: () => void }) {
   const root = useRef<HTMLDivElement>(null);
   return <div className="tbea-library-pages" ref={root} tabIndex={0} aria-label="原文页面，滚动连续阅读">
     {Array.from({ length: pages }, (_, i) => <PreviewPage key={i} root={root} bridge={bridge} previewId={previewId} page={i + 1} restart={restart} />)}

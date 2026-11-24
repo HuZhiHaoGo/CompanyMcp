@@ -60,11 +60,11 @@ function Demo() {
 const libraryBridge = async (endpoint, args, signal) => {
   const response = await fetch(`/demo/library/${endpoint.slice(8)}?${new URLSearchParams(args)}`, { signal });
   if (!response.ok) throw new Error((await response.json()).message || `HTTP ${response.status}`);
-  if (endpoint === 'library-page') return { bytes: await response.arrayBuffer(), mediaType: response.headers.get('content-type') };
+  if (endpoint === 'library-page' || endpoint === 'library-pdf-range') return { bytes: new Uint8Array(await response.arrayBuffer()), mediaType: response.headers.get('content-type') };
   return response.json();
 };
 
 function LibraryDemo() {
-  return <div style={{ height: '100dvh' }}><LibraryBrowser bridge={libraryBridge} /></div>;
+  return <div style={{ height: '100dvh' }}><LibraryBrowser bridge={libraryBridge} pdfAssetPath="/demo/pdf-asset" /></div>;
 }
 createRoot(document.getElementById('root')).render(<Demo />);

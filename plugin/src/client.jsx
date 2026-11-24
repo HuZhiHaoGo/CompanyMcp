@@ -18,7 +18,7 @@ export function apply(ctx) {
       signal,
     });
     const mediaType = response.headers.get('content-type');
-    if (response.ok && mediaType?.startsWith('image/')) {
+    if (response.ok && (mediaType?.startsWith('image/') || (endpoint === 'library-pdf-range' && mediaType === 'application/octet-stream'))) {
       return { mediaType, bytes: new Uint8Array(await response.arrayBuffer()) };
     }
     const result = await response.json().catch(() => null);
@@ -124,7 +124,7 @@ export function Sources({ view, bridge }) {
     <button className="tbea-source-toggle" type="button" aria-expanded={open} aria-controls={panelId} onClick={() => setOpen(!open)}>
       {open ? <ChevronDown size={16} /> : <ChevronRight size={16} />}<BookOpen size={16} /><strong>参考来源</strong><span className="tbea-count">{view.count ?? '—'}</span><span className="tbea-query" title={view.query}>{view.query}</span>{view.mode === 'mock' ? <span className="tbea-demo">演示</span> : null}
       {partial ? <span className="tbea-count" title="部分知识库未完成检索">已查 {coverage.completed}/{coverage.requested} 库</span> : null}
-      {!partial && coverage?.available > coverage.requested ? <span className="tbea-count" title="已从相关授权库获得证据">优先查 {coverage.requested}/{coverage.available} 库</span> : null}
+      {coverage && !partial && coverage.available > coverage.requested ? <span className="tbea-count" title="已从相关授权库获得证据">优先查 {coverage.requested}/{coverage.available} 库</span> : null}
       {view.evidenceStatus === 'partial' ? <span className="tbea-count" title="只找到部分所问事项的依据">部分有依据</span> : null}
     </button>
     {open ? <div className="tbea-source-body" id={panelId} aria-busy={loading}>

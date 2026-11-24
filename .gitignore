@@ -1,7 +1,10 @@
 node_modules/
 config/local.json
+desktop-deployment.json*
+plugin/config/example.json
 data/
 offline/
 test-results/
 tools/libreoffice/
 tools/.libreoffice-*/
+plugin/lib/pdfjs/

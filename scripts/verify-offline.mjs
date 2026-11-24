@@ -6,6 +6,7 @@ import { promisify } from 'node:util';
 import assert from 'node:assert/strict';
 import { pathToFileURL } from 'node:url';
 import { withBundledOffice } from '../src/document-renderer.ts';
+import { DESKTOP_CONFIG_TEMPLATE, DESKTOP_DEPLOYMENT_CONFIG } from '../src/desktop-config.ts';
 
 const archive = path.resolve(import.meta.dirname, '..', 'offline/with-libreoffice/dsh-mcp-tbea-knowledge-win-x64.zip');
 const tar = path.join(process.env.SystemRoot || 'C:/Windows', 'System32', 'tar.exe');
@@ -23,6 +24,7 @@ try {
   const config = JSON.parse(await fs.readFile(path.join(root, 'config/example.json'), 'utf8'));
   config.port = 17865; config.serviceToken = 'o'.repeat(64); config.dataDirectory = path.join(directory, 'data');
   config.documentPreview.enabled = true;
+  config.documentPreview.allowPdfViewer = true;
   const filename = path.join(root, 'config', 'smoke-config.json');
   await fs.writeFile(filename, JSON.stringify(config));
   const node = path.join(root, 'runtime/node.exe'); let output = '';
@@ -51,14 +53,21 @@ try {
   })]);
   const harnessHome = path.join(directory, 'Harness with spaces');
   const packageName = 'dsh-plugin-tbea-knowledge';
-  const desktopSource = path.join(directory, 'desktop-source.json');
-  await fs.writeFile(desktopSource, JSON.stringify({ ...config, dataDirectory: '../data', documentPreview: { ...config.documentPreview, enabled: true } }));
-  await run(node, [path.join(root, 'scripts/init.mjs'), '--desktop', '--harness-home', harnessHome, '--config-source', desktopSource], { cwd: directory, windowsHide: true });
-  const desktopConfig = JSON.parse(await fs.readFile(path.join(harnessHome, 'dsh-mcp-tbea-knowledge.json'), 'utf8'));
-  assert.equal(desktopConfig.dataDirectory, undefined);
-  assert.equal(desktopConfig.documentPreview.pdfInfo, undefined);
+  const deploymentFile = path.join(root, 'plugin', DESKTOP_DEPLOYMENT_CONFIG);
+  await assert.rejects(fs.stat(deploymentFile), { code: 'ENOENT' });
+  const pluginTemplate = path.join(root, 'plugin', DESKTOP_CONFIG_TEMPLATE);
+  const template = JSON.parse(await fs.readFile(pluginTemplate, 'utf8'));
+  assert.deepEqual(template, JSON.parse(await fs.readFile(path.join(root, DESKTOP_CONFIG_TEMPLATE), 'utf8')));
+  assert.equal(template.documentPreview.enabled, true);
+  assert.equal(template.documentPreview.allowPdfViewer, true);
+  template.port = config.port;
+  template.platform.projectId = 'offline-template-test';
+  await fs.writeFile(pluginTemplate, JSON.stringify(template));
+  const desktopFilename = path.join(harnessHome, 'dsh-mcp-tbea-knowledge.json');
+  await assert.rejects(fs.stat(desktopFilename), { code: 'ENOENT' });
 
-  const installed = path.join(harnessHome, 'profiles/.generations/live', `${packageName}+0.11.7+0123456789ab`, 'node_modules', packageName);
+  const { version } = JSON.parse(await fs.readFile(path.join(root, 'plugin/package.json'), 'utf8'));
+  const installed = path.join(harnessHome, 'profiles/.generations/live', `${packageName}+${version}+0123456789ab`, 'node_modules', packageName);
   await fs.mkdir(path.dirname(installed), { recursive: true });
   const source = await fs.realpath(path.join(root, 'plugin'));
   const testRoot = await fs.realpath(directory);
@@ -99,6 +108,13 @@ try {
   const page = await fetchDisplay('library-page', { previewId: preview.value.previewId, page: 2 });
   assert.equal(page.headers.get('content-type'), 'image/png');
   assert.equal(new Uint8Array(await page.arrayBuffer())[0], 137);
+  assert.ok(preview.value.pdfBytes > 5);
+  const range = await fetchDisplay('library-pdf-range', { previewId: preview.value.previewId, begin: 0, end: 5 });
+  assert.equal(range.headers.get('content-type'), 'application/octet-stream');
+  assert.equal(await range.text(), '%PDF-');
+  const worker = await route.fetch(new Request('http://localhost' + route.path + '?asset=pdf.worker.mjs'));
+  assert.match(worker.headers.get('content-type'), /javascript/);
+  assert.ok((await worker.arrayBuffer()).byteLength > 1000);
   const demo = await fetch('http://127.0.0.1:17865/demo');
   assert.equal(demo.status, 200);
   const { stdout } = await promisify(execFile)(process.execPath, [process.argv[3], '--desktop'], { windowsHide: true });
@@ -112,8 +128,15 @@ try {
   const host = spawn(node, [probe, path.join(entry, 'lib/index.js'), path.join(root, 'dist/doctor.mjs')], { cwd: directory, env: { ...process.env, DSH_HOME: harnessHome }, windowsHide: true, stdio: 'inherit' });
   const hostCode = await new Promise((resolve, reject) => { host.on('error', reject); host.on('exit', resolve); });
   if (hostCode !== 0) throw new Error('Bundled offline Host failed');
+  const desktopConfig = JSON.parse(await fs.readFile(desktopFilename, 'utf8'));
+  assert.match(desktopConfig.serviceToken, /^[a-f0-9]{64}$/);
+  assert.equal(desktopConfig.platform.projectId, 'offline-template-test');
+  assert.equal(desktopConfig.dataDirectory, undefined);
+  assert.equal(desktopConfig.documentPreview.enabled, true);
+  assert.equal(desktopConfig.documentPreview.allowPdfViewer, true);
+  assert.equal(desktopConfig.documentPreview.pdfInfo, undefined);
   if(await fetch('http://127.0.0.1:17865/health',{ signal:AbortSignal.timeout(500) }).then(()=>true,()=>false)) throw new Error('Host exit left its MCP service running');
-  console.log('Offline runtime OK without source node_modules or npm.');
+  console.log('Packaged template generated the Desktop config at first activation. Offline runtime OK without source node_modules or npm.');
 } finally {
   if (child) {
     const stopped = new Promise(resolve => { if (child.exitCode !== null || child.signalCode !== null) resolve(); else child.once('close', resolve); });

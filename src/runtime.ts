@@ -1,7 +1,7 @@
 import { createHmac } from 'node:crypto';
 import { isRecord } from './contracts.ts';
 import type { ServiceConfig } from './contracts.ts';
-export const SERVICE_VERSION = '0.11.7';
+export const SERVICE_VERSION = '0.11.10';
 export const RUNTIME_PROTOCOL = 'tbea-runtime/v1';
 function canonical(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(canonical);

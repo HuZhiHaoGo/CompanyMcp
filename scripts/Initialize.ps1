@@ -1,5 +1,6 @@
 param(
     [switch]$Desktop,
+    [switch]$PrepareDesktopPackage,
     [string]$HarnessHome,
     [string]$ConfigSource,
     [switch]$ReplaceConfig
@@ -7,6 +8,7 @@ param(
 . (Join-Path $PSScriptRoot 'common.ps1')
 $InitArguments = @()
 if ($Desktop) { $InitArguments += '--desktop' }
+if ($PrepareDesktopPackage) { $InitArguments += '--prepare-desktop-package' }
 if ($HarnessHome) { $InitArguments += @('--harness-home', $HarnessHome) }
 if ($ConfigSource) { $InitArguments += @('--config-source', $ConfigSource) }
 if ($ReplaceConfig) { $InitArguments += '--replace-config' }

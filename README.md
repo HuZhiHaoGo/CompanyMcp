@@ -6,7 +6,9 @@
 
 0.11.5 在本地证据不足时，可复用匠宝会话里已确认的内网模型自动核对口语问法和切片，必要时改写并补检。新增授权知识库可以直接使用，无需维护同义词表。多国或多事项问题分别核对证据。 [语义复核和内网验收步骤](docs/使用与维护手册.md#检查检索证据与校准阈值)
 
-左侧「知识库目录」可浏览授权库的文档、按名称筛选、查看基本信息和连续滚动原文。Windows x64 完整离线包附带 Poppler 和 LibreOffice，启用原文预览即可预览 PDF、Word 和 PPT。 [配置和验收步骤](docs/使用与维护手册.md#知识库目录与原文预览)
+左侧「知识库目录」可浏览授权库的文档、按名称筛选、查看基本信息和连续滚动原文。Windows x64 完整离线包附带 Poppler 和 LibreOffice，新装默认开启 PDF、Word 和 PPT 的原文预览。 [配置和验收步骤](docs/使用与维护手册.md#知识库目录与原文预览)
+
+新装默认启用 `documentPreview.allowPdfViewer`，可在同一原文预览界面切换 Poppler 图片预览和离线 PDF 查看器。 [切换方式与权限说明](docs/使用与维护手册.md#切换图片预览和-pdf-查看器)
 
 会话顶部的「引用文档」汇总当前会话各轮的公司知识库文档。点击文档名打开原文，点击「查看引用」返回对应轮次。每轮的「参考来源」可展开切片、表格和图片。 [会话引用使用方法](docs/使用与维护手册.md#会话引用文档)
 
@@ -21,8 +23,8 @@
 
 仅在内网使用时，复制 `offline/with-libreoffice/dsh-mcp-tbea-knowledge-win-x64.zip`。自行构建离线包的管理员先准备 LibreOffice 运行组件。 [准备 LibreOffice](tools/LIBREOFFICE.md) · [安装与升级](docs/使用与维护手册.md#安装与升级)
 
-1. 从解压目录运行 `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\Initialize.ps1 -Desktop -ConfigSource 'D:\配置\知识库.json'`，将示例路径换成管理员准备的 JSON。脚本将配置写入 `%APPDATA%\dsh-desktop\harness\dsh-mcp-tbea-knowledge.json`。
-2. 在匠宝 `desktop` 的「插件管理」中选择解压包内的 `plugin` 目录安装并启用。匠宝将插件代码和 Poppler 一起安装，配置保留在 `harness` 根目录。
+1. 正式部署时，管理员直接在解压包的 `plugin\config\example.json` 中填写公司配置。原样安装通用离线包会使用演示模式。
+2. 在匠宝 `desktop` 的「插件管理」中添加同一份 `plugin` 目录并启用。首次启用自动在实际 `DSH_HOME` 下生成 `dsh-mcp-tbea-knowledge.json`，Windows 默认是 `%APPDATA%\dsh-desktop\harness`。已有配置会继续使用，可随 `harness` 统一下发。
 3. 关闭旧版手动服务，从托盘完全退出并重新打开匠宝。运行 `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\Doctor.ps1 -Desktop` 检查版本、配置和 MCP 握手。
 4. 在输入框通过 `/公司知识库` 选中知识库后提问。从左侧「知识库目录」打开文档，核对原文预览。
 
