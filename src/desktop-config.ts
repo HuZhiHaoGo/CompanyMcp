@@ -10,6 +10,7 @@ export function desktopConfigLocations(harnessHome: string | undefined, packageR
     filename: path.join(harnessHome, DESKTOP_CONFIG),
     options: {
       bundledPopplerBin: path.join(packageRoot, 'tools', 'poppler', 'Library', 'bin'),
+      bundledOffice: path.join(packageRoot, 'tools', 'libreoffice', 'program', 'soffice.com'),
       defaultDataDirectory: path.join(harnessHome, 'dsh-mcp-tbea-knowledge-data'),
     },
   };

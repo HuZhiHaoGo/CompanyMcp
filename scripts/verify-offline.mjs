@@ -4,8 +4,10 @@ import os from 'node:os';
 import { execFile, spawn } from 'node:child_process';
 import { promisify } from 'node:util';
 import assert from 'node:assert/strict';
+import { pathToFileURL } from 'node:url';
+import { withBundledOffice } from '../src/document-renderer.ts';
 
-const archive = path.resolve(import.meta.dirname, '..', 'offline/dsh-mcp-tbea-knowledge-win-x64.zip');
+const archive = path.resolve(import.meta.dirname, '..', 'offline/with-libreoffice/dsh-mcp-tbea-knowledge-win-x64.zip');
 const tar = path.join(process.env.SystemRoot || 'C:/Windows', 'System32', 'tar.exe');
 const run = promisify(execFile);
 const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'tbea-offline-'));
@@ -49,18 +51,29 @@ try {
   })]);
   const harnessHome = path.join(directory, 'Harness with spaces');
   const packageName = 'dsh-plugin-tbea-knowledge';
-  const installed = path.join(harnessHome, 'profiles/.generations/live/fixture/node_modules', packageName);
-  await fs.cp(path.join(root, 'plugin'), installed, { recursive: true });
-  const entry = path.join(harnessHome, 'profiles/desktop/node_modules', packageName);
-  await fs.mkdir(path.dirname(entry), { recursive: true });
-  await fs.symlink(installed, entry, 'junction');
-  assert.doesNotMatch(await fs.readFile(path.join(installed, 'cordis.patch.yml'), 'utf8'), /configFile|projectRoot/);
   const desktopSource = path.join(directory, 'desktop-source.json');
   await fs.writeFile(desktopSource, JSON.stringify({ ...config, dataDirectory: '../data', documentPreview: { ...config.documentPreview, enabled: true } }));
   await run(node, [path.join(root, 'scripts/init.mjs'), '--desktop', '--harness-home', harnessHome, '--config-source', desktopSource], { cwd: directory, windowsHide: true });
   const desktopConfig = JSON.parse(await fs.readFile(path.join(harnessHome, 'dsh-mcp-tbea-knowledge.json'), 'utf8'));
   assert.equal(desktopConfig.dataDirectory, undefined);
   assert.equal(desktopConfig.documentPreview.pdfInfo, undefined);
+
+  const installed = path.join(harnessHome, 'profiles/.generations/live', `${packageName}+0.11.7+0123456789ab`, 'node_modules', packageName);
+  await fs.mkdir(path.dirname(installed), { recursive: true });
+  const source = await fs.realpath(path.join(root, 'plugin'));
+  const testRoot = await fs.realpath(directory);
+  const destination = path.join(await fs.realpath(path.dirname(installed)), packageName);
+  assert.ok(source.startsWith(testRoot + path.sep) && destination.startsWith(testRoot + path.sep));
+  await fs.rename(source, destination);
+  const entry = path.join(harnessHome, 'profiles/desktop/node_modules', packageName);
+  await fs.mkdir(path.dirname(entry), { recursive: true });
+  await fs.symlink(installed, entry, 'junction');
+  assert.doesNotMatch(await fs.readFile(path.join(installed, 'cordis.patch.yml'), 'utf8'), /configFile|projectRoot/);
+  const officeProfile = pathToFileURL(path.join(directory, 'office-version-profile')).href;
+  const { stdout: officeVersion } = await withBundledOffice(path.join(installed, 'tools/libreoffice/program/soffice.com'), directory, executable =>
+    run(executable, [`-env:UserInstallation=${officeProfile}`, '--version'], { windowsHide: true, timeout: 30000 }));
+  assert.match(officeVersion, /LibreOffice/u);
+  console.log(officeVersion.trim());
   const probe = path.join(directory, 'host-probe.mjs');
   await fs.writeFile(probe, `import { pathToFileURL } from 'node:url';
 import assert from 'node:assert/strict';
@@ -92,6 +105,7 @@ try {
   assert.ok(stdout.includes('Runtime identity OK'));
   assert.ok(stdout.includes('MCP handshake OK'));
   assert.ok(stdout.includes('profiles\\\\.generations\\\\live'));
+  assert.ok(stdout.includes('LibreOffice: ') && stdout.includes('tools\\\\libreoffice\\\\program\\\\soffice.com'));
   console.log('Installed Host, bundled demo, MCP, library preview and Desktop diagnostics OK.');
 } finally { for (const effect of effects.reverse()) await effect(); }
 `);

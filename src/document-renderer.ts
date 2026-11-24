@@ -104,11 +104,28 @@ const officeRegistry = `<?xml version="1.0" encoding="UTF-8"?>
 <item oor:path="/org.openoffice.Office.Writer/Content/Update"><prop oor:name="Link" oor:op="fuse"><value>0</value></prop></item>
 </oor:items>`;
 
-async function convertOffice(input: string, directory: string, program: string, signal: AbortSignal) {
+export async function withBundledOffice<T>(program: string, directory: string, task: (executable: string) => Promise<T>): Promise<T> {
+  // LibreOffice 的 Windows 启动器在较深的 Harness generation 路径中会启动失败。
+  const link = path.join(directory, 'lo');
+  await fs.symlink(path.dirname(path.dirname(program)), link, 'junction').catch(error => {
+    const failure = new PlatformError('OFFICE_PATH_UNAVAILABLE', '无法为内置 LibreOffice 创建临时运行路径，请联系管理员检查临时目录权限');
+    failure.cause = error;
+    throw failure;
+  });
+  try {
+    return await task(path.join(link, 'program', path.basename(program)));
+  } finally {
+    await fs.unlink(link);
+  }
+}
+
+async function convertOffice(input: string, directory: string, program: string, bundled: boolean, signal: AbortSignal) {
   const profile = path.join(directory, 'office-profile');
   await fs.mkdir(path.join(profile, 'user'), { recursive: true });
   await fs.writeFile(path.join(profile, 'user', 'registrymodifications.xcu'), officeRegistry);
-  await run(program, [`-env:UserInstallation=${pathToFileURL(profile).href}`, '--headless', '--invisible', '--norestore', '--convert-to', 'pdf', '--outdir', directory, input], directory, signal, '文档转换失败，可能需要管理员配置适配该格式的转换组件');
+  const convert = (executable: string) => run(executable, [`-env:UserInstallation=${pathToFileURL(profile).href}`, '--headless', '--invisible', '--norestore', '--convert-to', 'pdf', '--outdir', directory, input], directory, signal, '文档转换失败，可能需要管理员配置适配该格式的转换组件');
+  if (bundled && process.platform === 'win32') await withBundledOffice(program, directory, convert);
+  else await convert(program);
   return path.join(directory, `${path.parse(input).name}.pdf`);
 }
 
@@ -126,7 +143,7 @@ export async function prepareDocument(settings: DocumentPreviewConfig, address: 
       } else {
         if (!settings.office) throw new PlatformError('CONVERTER_REQUIRED', '管理员尚未配置此格式的转换组件');
         const input = webFormats.has(format) ? await webDocument(original, format, directory) : original;
-        pdf = await convertOffice(input, directory, settings.office, signal);
+        pdf = await convertOffice(input, directory, settings.office, settings.officeBundled === true, signal);
       }
     } finally { await fs.rm(original, { force: true }); }
   }

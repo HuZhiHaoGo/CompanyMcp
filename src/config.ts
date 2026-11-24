@@ -12,6 +12,7 @@ export const RETRIEVAL_DEFAULTS = Object.freeze({ perLibraryTop: 3, libraryTimeo
 
 interface ConfigLocations {
   bundledPopplerBin?: string;
+  bundledOffice?: string;
   defaultDataDirectory?: string;
 }
 
@@ -83,7 +84,7 @@ export async function validateConfig(config: Record<string, unknown>, filename: 
     ...config, mode, port, serviceToken, platform, knowledgeBases, dataDirectory, limits,
     retrieval: { ...retrieval, evidenceScoreThreshold: evidenceThreshold, diagnostics: overrides.diagnostics, synonyms: readSynonyms(overrides.synonyms),
       semanticReview: overrides.semanticReview === false ? false : undefined, semanticModelOrigins: readModelOrigins(overrides.semanticModelOrigins) },
-    documentPreview: await readDocumentPreview(config.documentPreview, directoryPath, options.bundledPopplerBin),
+    documentPreview: await readDocumentPreview(config.documentPreview, directoryPath, options),
     service: service && { ...service, autoStart },
     knowledgeDirectory: { mode: directoryMode, refreshSeconds },
     // 未配置的旧版本继续允许模型按需检索。
@@ -120,7 +121,7 @@ function readSynonyms(value: unknown): EvidenceSynonym[] | undefined {
   });
 }
 
-async function readDocumentPreview(value: unknown, directory: string, bundledPopplerBin?: string): Promise<DocumentPreviewConfig | undefined> {
+async function readDocumentPreview(value: unknown, directory: string, { bundledPopplerBin, bundledOffice }: ConfigLocations): Promise<DocumentPreviewConfig | undefined> {
   if (value === undefined) return undefined;
   if (!isRecord(value) || typeof value.enabled !== 'boolean') throw new Error('documentPreview.enabled 必须为 true 或 false');
   function program(input: unknown, key: string) {
@@ -137,6 +138,8 @@ async function readDocumentPreview(value: unknown, directory: string, bundledPop
   }
   let info = program(pdfInfo, 'pdfInfo');
   let ppm = program(pdfToPpm, 'pdfToPpm');
+  let officeProgram = program(office, 'office');
+  let officeBundled: boolean | undefined;
   if (value.enabled && process.platform === 'win32') {
     const legacyBin = path.resolve(directory, '../tools/poppler/Library/bin');
     const offlineBin = path.resolve(directory, '../plugin/tools/poppler/Library/bin');
@@ -151,9 +154,20 @@ async function readDocumentPreview(value: unknown, directory: string, bundledPop
       return configured;
     }
     [info, ppm] = await Promise.all([bundledProgram('pdfinfo.exe', info, pdfInfo), bundledProgram('pdftoppm.exe', ppm, pdfToPpm)]);
+    if (!officeProgram) {
+      // 匠宝只查已安装插件，独立服务也能使用同一离线包中的组件。
+      const relative = 'tools/libreoffice/program/soffice.com';
+      for (const candidate of bundledOffice ? [bundledOffice] : [path.resolve(directory, '../plugin', relative), path.resolve(directory, '..', relative)]) {
+        if ((await fs.stat(candidate).catch(() => undefined))?.isFile()) {
+          officeProgram = candidate;
+          officeBundled = true;
+          break;
+        }
+      }
+    }
   }
   if (value.enabled && (!info || !ppm)) throw new Error('启用正式原文预览需要配置 pdfInfo 和 pdfToPpm');
-  return { enabled: value.enabled, pdfInfo: info, pdfToPpm: ppm, office: program(office, 'office'), converters };
+  return { enabled: value.enabled, pdfInfo: info, pdfToPpm: ppm, office: officeProgram, officeBundled, converters };
 }
 
 function readPlatform(raw: Record<string, unknown>, mode: ServiceConfig['mode']): PlatformConfig {

@@ -3,3 +3,5 @@ config/local.json
 data/
 offline/
 test-results/
+tools/libreoffice/
+tools/.libreoffice-*/

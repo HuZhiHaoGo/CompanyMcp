@@ -11,7 +11,10 @@ import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/
 export async function diagnose(filename, options) {
   console.log(`Configuration: ${path.resolve(filename)}`);
   const config = await readConfig(filename, options); const base = `http://127.0.0.1:${config.port}`;
-  if (config.documentPreview?.enabled) console.log(`Poppler: ${config.documentPreview.pdfInfo}; ${config.documentPreview.pdfToPpm}`);
+  if (config.documentPreview?.enabled) {
+    console.log(`Poppler: ${config.documentPreview.pdfInfo}; ${config.documentPreview.pdfToPpm}`);
+    console.log(`LibreOffice: ${config.documentPreview.office ?? 'not configured'}`);
+  }
   console.log(`Node: ${process.version}; mode: ${config.mode}; service: ${base}`);
   console.log(`DSH knowledge retrieval: ${config.autoRetrieveKnowledge ? 'on-demand' : 'manual-only'}`);
   const health = await fetch(`${base}/health`, { signal: AbortSignal.timeout(5000) });

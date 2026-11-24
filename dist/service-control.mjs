@@ -100,7 +100,7 @@ async function validateConfig(config, filename2, options = {}) {
       semanticReview: overrides.semanticReview === false ? false : void 0,
       semanticModelOrigins: readModelOrigins(overrides.semanticModelOrigins)
     },
-    documentPreview: await readDocumentPreview(config.documentPreview, directoryPath, options.bundledPopplerBin),
+    documentPreview: await readDocumentPreview(config.documentPreview, directoryPath, options),
     service: service && { ...service, autoStart },
     knowledgeDirectory: { mode: directoryMode, refreshSeconds },
     // 未配置的旧版本继续允许模型按需检索。
@@ -135,7 +135,7 @@ function readSynonyms(value) {
     return { term: item.term.trim(), aliases: words(item.aliases), context: words(item.context) };
   });
 }
-async function readDocumentPreview(value, directory, bundledPopplerBin) {
+async function readDocumentPreview(value, directory, { bundledPopplerBin, bundledOffice }) {
   if (value === void 0) return void 0;
   if (!isRecord(value) || typeof value.enabled !== "boolean") throw new Error("documentPreview.enabled \u5FC5\u987B\u4E3A true \u6216 false");
   function program(input, key) {
@@ -152,6 +152,8 @@ async function readDocumentPreview(value, directory, bundledPopplerBin) {
   }
   let info = program(pdfInfo, "pdfInfo");
   let ppm = program(pdfToPpm, "pdfToPpm");
+  let officeProgram = program(office, "office");
+  let officeBundled;
   if (value.enabled && process.platform === "win32") {
     const legacyBin = path.resolve(directory, "../tools/poppler/Library/bin");
     const offlineBin = path.resolve(directory, "../plugin/tools/poppler/Library/bin");
@@ -165,9 +167,19 @@ async function readDocumentPreview(value, directory, bundledPopplerBin) {
       return configured;
     }
     [info, ppm] = await Promise.all([bundledProgram("pdfinfo.exe", info, pdfInfo), bundledProgram("pdftoppm.exe", ppm, pdfToPpm)]);
+    if (!officeProgram) {
+      const relative = "tools/libreoffice/program/soffice.com";
+      for (const candidate of bundledOffice ? [bundledOffice] : [path.resolve(directory, "../plugin", relative), path.resolve(directory, "..", relative)]) {
+        if ((await fs.stat(candidate).catch(() => void 0))?.isFile()) {
+          officeProgram = candidate;
+          officeBundled = true;
+          break;
+        }
+      }
+    }
   }
   if (value.enabled && (!info || !ppm)) throw new Error("\u542F\u7528\u6B63\u5F0F\u539F\u6587\u9884\u89C8\u9700\u8981\u914D\u7F6E pdfInfo \u548C pdfToPpm");
-  return { enabled: value.enabled, pdfInfo: info, pdfToPpm: ppm, office: program(office, "office"), converters };
+  return { enabled: value.enabled, pdfInfo: info, pdfToPpm: ppm, office: officeProgram, officeBundled, converters };
 }
 function readPlatform(raw, mode) {
   function routeFor(key, fallback) {

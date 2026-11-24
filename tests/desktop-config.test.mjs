@@ -19,6 +19,8 @@ test('Desktop initialization migrates template defaults and preserves configurat
   for (const name of ['pdfinfo.exe', 'pdftoppm.exe']) {
     await fs.writeFile(path.join(options.bundledPopplerBin, name), 'fixture');
   }
+  await fs.mkdir(path.dirname(options.bundledOffice), { recursive: true });
+  await fs.writeFile(options.bundledOffice, 'fixture');
   const source = path.join(root, 'source.json');
   const template = JSON.parse(await fs.readFile(new URL('../config/example.json', import.meta.url), 'utf8'));
   const previewEnabled = process.platform === 'win32';
@@ -31,6 +33,7 @@ test('Desktop initialization migrates template defaults and preserves configurat
   assert.match(parsed.serviceToken, /^[a-f0-9]{64}$/);
   assert.equal(parsed.dataDirectory, path.join(harnessHome, 'dsh-mcp-tbea-knowledge-data'));
   assert.equal(parsed.documentPreview.office, path.join(harnessHome, 'custom', 'office.exe'));
+  assert.equal(parsed.documentPreview.officeBundled, undefined);
   if (previewEnabled) {
     assert.equal(parsed.documentPreview.pdfInfo, path.join(options.bundledPopplerBin, 'pdfinfo.exe'));
     assert.equal(parsed.documentPreview.pdfToPpm, path.join(options.bundledPopplerBin, 'pdftoppm.exe'));
@@ -45,4 +48,10 @@ test('Desktop initialization migrates template defaults and preserves configurat
   const replacement = await readConfig(filename, options);
   assert.equal(replacement.port, 17862);
   assert.equal(replacement.serviceToken, parsed.serviceToken);
+  delete template.documentPreview.office;
+  await fs.writeFile(source, JSON.stringify(template));
+  await initializeDesktop(root, { harnessHome, configSource: source, replaceConfig: true });
+  const bundled = (await readConfig(filename, options)).documentPreview;
+  assert.equal(bundled.office, previewEnabled ? options.bundledOffice : undefined);
+  assert.equal(bundled.officeBundled, previewEnabled ? true : undefined);
 });

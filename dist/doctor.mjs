@@ -7456,7 +7456,7 @@ async function validateConfig(config2, filename, options = {}) {
       semanticReview: overrides.semanticReview === false ? false : void 0,
       semanticModelOrigins: readModelOrigins(overrides.semanticModelOrigins)
     },
-    documentPreview: await readDocumentPreview(config2.documentPreview, directoryPath, options.bundledPopplerBin),
+    documentPreview: await readDocumentPreview(config2.documentPreview, directoryPath, options),
     service: service && { ...service, autoStart },
     knowledgeDirectory: { mode: directoryMode, refreshSeconds },
     // 未配置的旧版本继续允许模型按需检索。
@@ -7491,7 +7491,7 @@ function readSynonyms(value) {
     return { term: item.term.trim(), aliases: words(item.aliases), context: words(item.context) };
   });
 }
-async function readDocumentPreview(value, directory, bundledPopplerBin) {
+async function readDocumentPreview(value, directory, { bundledPopplerBin, bundledOffice }) {
   if (value === void 0) return void 0;
   if (!isRecord(value) || typeof value.enabled !== "boolean") throw new Error("documentPreview.enabled \u5FC5\u987B\u4E3A true \u6216 false");
   function program(input, key) {
@@ -7508,6 +7508,8 @@ async function readDocumentPreview(value, directory, bundledPopplerBin) {
   }
   let info = program(pdfInfo, "pdfInfo");
   let ppm = program(pdfToPpm, "pdfToPpm");
+  let officeProgram = program(office, "office");
+  let officeBundled;
   if (value.enabled && process.platform === "win32") {
     const legacyBin = path.resolve(directory, "../tools/poppler/Library/bin");
     const offlineBin = path.resolve(directory, "../plugin/tools/poppler/Library/bin");
@@ -7521,9 +7523,19 @@ async function readDocumentPreview(value, directory, bundledPopplerBin) {
       return configured;
     }
     [info, ppm] = await Promise.all([bundledProgram("pdfinfo.exe", info, pdfInfo), bundledProgram("pdftoppm.exe", ppm, pdfToPpm)]);
+    if (!officeProgram) {
+      const relative = "tools/libreoffice/program/soffice.com";
+      for (const candidate of bundledOffice ? [bundledOffice] : [path.resolve(directory, "../plugin", relative), path.resolve(directory, "..", relative)]) {
+        if ((await fs.stat(candidate).catch(() => void 0))?.isFile()) {
+          officeProgram = candidate;
+          officeBundled = true;
+          break;
+        }
+      }
+    }
   }
   if (value.enabled && (!info || !ppm)) throw new Error("\u542F\u7528\u6B63\u5F0F\u539F\u6587\u9884\u89C8\u9700\u8981\u914D\u7F6E pdfInfo \u548C pdfToPpm");
-  return { enabled: value.enabled, pdfInfo: info, pdfToPpm: ppm, office: program(office, "office"), converters };
+  return { enabled: value.enabled, pdfInfo: info, pdfToPpm: ppm, office: officeProgram, officeBundled, converters };
 }
 function readPlatform(raw, mode) {
   function routeFor(key, fallback) {
@@ -7576,6 +7588,7 @@ function desktopConfigLocations(harnessHome, packageRoot) {
     filename: path2.join(harnessHome, DESKTOP_CONFIG),
     options: {
       bundledPopplerBin: path2.join(packageRoot, "tools", "poppler", "Library", "bin"),
+      bundledOffice: path2.join(packageRoot, "tools", "libreoffice", "program", "soffice.com"),
       defaultDataDirectory: path2.join(harnessHome, "dsh-mcp-tbea-knowledge-data")
     }
   };
@@ -7586,7 +7599,7 @@ function commandHarnessHome(override) {
 
 // src/runtime.ts
 import { createHmac } from "node:crypto";
-var SERVICE_VERSION = "0.11.6";
+var SERVICE_VERSION = "0.11.7";
 var RUNTIME_PROTOCOL = "tbea-runtime/v1";
 function canonical(value) {
   if (Array.isArray(value)) return value.map(canonical);
@@ -19207,7 +19220,10 @@ async function diagnose(filename, options) {
   console.log(`Configuration: ${path3.resolve(filename)}`);
   const config2 = await readConfig(filename, options);
   const base = `http://127.0.0.1:${config2.port}`;
-  if (config2.documentPreview?.enabled) console.log(`Poppler: ${config2.documentPreview.pdfInfo}; ${config2.documentPreview.pdfToPpm}`);
+  if (config2.documentPreview?.enabled) {
+    console.log(`Poppler: ${config2.documentPreview.pdfInfo}; ${config2.documentPreview.pdfToPpm}`);
+    console.log(`LibreOffice: ${config2.documentPreview.office ?? "not configured"}`);
+  }
   console.log(`Node: ${process.version}; mode: ${config2.mode}; service: ${base}`);
   console.log(`DSH knowledge retrieval: ${config2.autoRetrieveKnowledge ? "on-demand" : "manual-only"}`);
   const health = await fetch(`${base}/health`, { signal: AbortSignal.timeout(5e3) });

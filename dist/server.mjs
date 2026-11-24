@@ -34143,7 +34143,7 @@ async function validateConfig(config2, filename, options = {}) {
       semanticReview: overrides.semanticReview === false ? false : void 0,
       semanticModelOrigins: readModelOrigins(overrides.semanticModelOrigins)
     },
-    documentPreview: await readDocumentPreview(config2.documentPreview, directoryPath, options.bundledPopplerBin),
+    documentPreview: await readDocumentPreview(config2.documentPreview, directoryPath, options),
     service: service && { ...service, autoStart },
     knowledgeDirectory: { mode: directoryMode, refreshSeconds },
     // 未配置的旧版本继续允许模型按需检索。
@@ -34178,7 +34178,7 @@ function readSynonyms(value) {
     return { term: item.term.trim(), aliases: words2(item.aliases), context: words2(item.context) };
   });
 }
-async function readDocumentPreview(value, directory, bundledPopplerBin) {
+async function readDocumentPreview(value, directory, { bundledPopplerBin, bundledOffice }) {
   if (value === void 0) return void 0;
   if (!isRecord(value) || typeof value.enabled !== "boolean") throw new Error("documentPreview.enabled \u5FC5\u987B\u4E3A true \u6216 false");
   function program(input, key) {
@@ -34195,6 +34195,8 @@ async function readDocumentPreview(value, directory, bundledPopplerBin) {
   }
   let info = program(pdfInfo, "pdfInfo");
   let ppm = program(pdfToPpm, "pdfToPpm");
+  let officeProgram = program(office, "office");
+  let officeBundled;
   if (value.enabled && process.platform === "win32") {
     const legacyBin = path.resolve(directory, "../tools/poppler/Library/bin");
     const offlineBin = path.resolve(directory, "../plugin/tools/poppler/Library/bin");
@@ -34208,9 +34210,19 @@ async function readDocumentPreview(value, directory, bundledPopplerBin) {
       return configured;
     }
     [info, ppm] = await Promise.all([bundledProgram("pdfinfo.exe", info, pdfInfo), bundledProgram("pdftoppm.exe", ppm, pdfToPpm)]);
+    if (!officeProgram) {
+      const relative = "tools/libreoffice/program/soffice.com";
+      for (const candidate of bundledOffice ? [bundledOffice] : [path.resolve(directory, "../plugin", relative), path.resolve(directory, "..", relative)]) {
+        if ((await fs.stat(candidate).catch(() => void 0))?.isFile()) {
+          officeProgram = candidate;
+          officeBundled = true;
+          break;
+        }
+      }
+    }
   }
   if (value.enabled && (!info || !ppm)) throw new Error("\u542F\u7528\u6B63\u5F0F\u539F\u6587\u9884\u89C8\u9700\u8981\u914D\u7F6E pdfInfo \u548C pdfToPpm");
-  return { enabled: value.enabled, pdfInfo: info, pdfToPpm: ppm, office: program(office, "office"), converters };
+  return { enabled: value.enabled, pdfInfo: info, pdfToPpm: ppm, office: officeProgram, officeBundled, converters };
 }
 function readPlatform(raw, mode) {
   function routeFor(key, fallback) {
@@ -67211,11 +67223,26 @@ var officeRegistry = `<?xml version="1.0" encoding="UTF-8"?>
 <item oor:path="/org.openoffice.Office.Common/Security/Scripting"><prop oor:name="MacroSecurityLevel" oor:op="fuse"><value>3</value></prop></item>
 <item oor:path="/org.openoffice.Office.Writer/Content/Update"><prop oor:name="Link" oor:op="fuse"><value>0</value></prop></item>
 </oor:items>`;
-async function convertOffice(input, directory, program, signal) {
+async function withBundledOffice(program, directory, task) {
+  const link = path5.join(directory, "lo");
+  await fs4.symlink(path5.dirname(path5.dirname(program)), link, "junction").catch((error3) => {
+    const failure2 = new PlatformError("OFFICE_PATH_UNAVAILABLE", "\u65E0\u6CD5\u4E3A\u5185\u7F6E LibreOffice \u521B\u5EFA\u4E34\u65F6\u8FD0\u884C\u8DEF\u5F84\uFF0C\u8BF7\u8054\u7CFB\u7BA1\u7406\u5458\u68C0\u67E5\u4E34\u65F6\u76EE\u5F55\u6743\u9650");
+    failure2.cause = error3;
+    throw failure2;
+  });
+  try {
+    return await task(path5.join(link, "program", path5.basename(program)));
+  } finally {
+    await fs4.unlink(link);
+  }
+}
+async function convertOffice(input, directory, program, bundled, signal) {
   const profile = path5.join(directory, "office-profile");
   await fs4.mkdir(path5.join(profile, "user"), { recursive: true });
   await fs4.writeFile(path5.join(profile, "user", "registrymodifications.xcu"), officeRegistry);
-  await run(program, [`-env:UserInstallation=${pathToFileURL(profile).href}`, "--headless", "--invisible", "--norestore", "--convert-to", "pdf", "--outdir", directory, input], directory, signal, "\u6587\u6863\u8F6C\u6362\u5931\u8D25\uFF0C\u53EF\u80FD\u9700\u8981\u7BA1\u7406\u5458\u914D\u7F6E\u9002\u914D\u8BE5\u683C\u5F0F\u7684\u8F6C\u6362\u7EC4\u4EF6");
+  const convert4 = (executable) => run(executable, [`-env:UserInstallation=${pathToFileURL(profile).href}`, "--headless", "--invisible", "--norestore", "--convert-to", "pdf", "--outdir", directory, input], directory, signal, "\u6587\u6863\u8F6C\u6362\u5931\u8D25\uFF0C\u53EF\u80FD\u9700\u8981\u7BA1\u7406\u5458\u914D\u7F6E\u9002\u914D\u8BE5\u683C\u5F0F\u7684\u8F6C\u6362\u7EC4\u4EF6");
+  if (bundled && process.platform === "win32") await withBundledOffice(program, directory, convert4);
+  else await convert4(program);
   return path5.join(directory, `${path5.parse(input).name}.pdf`);
 }
 async function prepareDocument(settings, address, format, directory, signal, fetcher = fetch) {
@@ -67232,7 +67259,7 @@ async function prepareDocument(settings, address, format, directory, signal, fet
       } else {
         if (!settings.office) throw new PlatformError("CONVERTER_REQUIRED", "\u7BA1\u7406\u5458\u5C1A\u672A\u914D\u7F6E\u6B64\u683C\u5F0F\u7684\u8F6C\u6362\u7EC4\u4EF6");
         const input = webFormats.has(format) ? await webDocument(original, format, directory) : original;
-        pdf = await convertOffice(input, directory, settings.office, signal);
+        pdf = await convertOffice(input, directory, settings.office, settings.officeBundled === true, signal);
       }
     } finally {
       await fs4.rm(original, { force: true });
@@ -67409,7 +67436,7 @@ var LibraryBrowser = class {
 
 // src/runtime.ts
 import { createHmac } from "node:crypto";
-var SERVICE_VERSION = "0.11.6";
+var SERVICE_VERSION = "0.11.7";
 var RUNTIME_PROTOCOL = "tbea-runtime/v1";
 function canonical(value) {
   if (Array.isArray(value)) return value.map(canonical);

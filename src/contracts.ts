@@ -80,6 +80,7 @@ export interface DocumentPreviewConfig {
   pdfInfo?: string;
   pdfToPpm?: string;
   office?: string;
+  officeBundled?: boolean;
   converters: Partial<Record<string, string>>;
 }
 
