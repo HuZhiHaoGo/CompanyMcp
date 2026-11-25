@@ -1,10 +1,11 @@
-import { normalizeCitation, citationKnowledgeBaseId } from './normalize.ts';
+import { normalizeCitation, citationDocumentName, citationKnowledgeBaseId } from './normalize.ts';
 import { PlatformError, searchPlatform } from './platform.ts';
 import { isRecord } from './contracts.ts';
 import type { Citation, Fetcher, JsonRecord, KnowledgeBase, RetrievalConfig, ServiceConfig } from './contracts.ts';
 import type { SearchGate } from './gate.ts';
 import { evidenceScore } from './evidence.ts';
 import type { EvidenceDecision, EvidenceText } from './evidence.ts';
+import { diagnosticCredentials, diagnosticErrorCode, diagnosticId, diagnosticText } from './diagnostics.ts';
 
 export interface CandidateDecision {
   libraryId: string;
@@ -12,6 +13,33 @@ export interface CandidateDecision {
   score: number | null;
   topics: number[];
   reason: string;
+  documentName?: string;
+  excerpt?: string;
+  excerptTruncated?: boolean;
+}
+
+export type CandidateReport = (decision: CandidateDecision, raw: JsonRecord, citation?: Citation) => void;
+
+export function diagnosticDocumentName(raw: JsonRecord, credentials: ReturnType<typeof diagnosticCredentials>) {
+  return diagnosticText(citationDocumentName(raw), 240, credentials) || undefined;
+}
+
+export interface LibrarySearchTrace {
+  phase: string;
+  libraryId?: string;
+  ms: number;
+  errorCode?: string;
+  returned?: number;
+  scoped?: number;
+  kept?: number;
+  platformTotal?: number;
+  hits?: CandidateDecision[];
+}
+
+function describeCandidate(raw: JsonRecord, reason: string, topics: number[] = []): CandidateDecision {
+  const score = evidenceScore(raw.rank_score);
+  return { libraryId: diagnosticId(citationKnowledgeBaseId(raw)) ?? '', chunkId: diagnosticId(raw.chunk_id ?? raw.chunkId ?? raw.id) ?? '',
+    score: score < 0 ? null : score, topics, reason };
 }
 
 interface RetrieveOptions {
@@ -30,10 +58,11 @@ interface RetrieveOptions {
   semanticSupplement?: (chunks: JsonRecord[]) => Promise<string | undefined>;
   verifySupplement?: (chunks: JsonRecord[]) => Promise<void>;
   passFinished?: (pass: { phase: string; attempted: number; completed: number; ms: number }) => void;
+  libraryFinished?: (batch: LibrarySearchTrace) => void;
 }
 
 /** 每个库独立召回。每轮只启动少量工作任务，平台请求仍共用全局限流队列。 */
-export async function retrieveLibraries({ config, gate, settings, query, ids, top, roundSignal, signal, fetcher, priorityIds, supplement, enough, semanticSupplement, verifySupplement, passFinished }: RetrieveOptions) {
+export async function retrieveLibraries({ config, gate, settings, query, ids, top, roundSignal, signal, fetcher, priorityIds, supplement, enough, semanticSupplement, verifySupplement, passFinished, libraryFinished }: RetrieveOptions) {
   const libraryIds = [...ids].sort();
   const candidates = new Map<string, Map<string, JsonRecord>>();
   const attempted = new Set<string>();
@@ -41,18 +70,24 @@ export async function retrieveLibraries({ config, gate, settings, query, ids, to
   let firstFailure: unknown;
   let mixedFailures = false;
   const perLibraryTop = Math.min(top, settings.perLibraryTop);
+  const credentials = libraryFinished ? diagnosticCredentials(config) : [];
   const collected = () => libraryIds.flatMap(id => [...(candidates.get(id)?.values() ?? [])]);
   async function pass(phase: string, libraries: readonly string[], searchQuery: string) {
     if (!libraries.length) return;
     const started = performance.now();
     // Include the full planned scope even when the deadline expires in the queue.
     libraries.forEach(id => attempted.add(id));
-    if (roundSignal.aborted) return;
+    if (roundSignal.aborted) {
+      passFinished?.({ phase, attempted: libraries.length, completed: 0, ms: 0 });
+      return;
+    }
     let next = 0;
     let success = 0;
     async function worker() {
       while (next < libraries.length && !roundSignal.aborted) {
         const libraryId = libraries[next++];
+        const began = performance.now();
+        const trace: LibrarySearchTrace | undefined = libraryFinished && { phase, libraryId: diagnosticId(libraryId), ms: 0 };
         try {
           const chunks = await gate.run(roundSignal, async () => {
             const librarySignal = AbortSignal.any([roundSignal, AbortSignal.timeout(settings.libraryTimeoutMs)]);
@@ -60,6 +95,19 @@ export async function retrieveLibraries({ config, gate, settings, query, ids, to
             const result = await searchPlatform(config, searchQuery, [libraryId], perLibraryTop, librarySignal, fetcher);
             librarySignal.throwIfAborted();
             const scoped = result.chunks.filter((chunk): chunk is JsonRecord => isRecord(chunk) && citationKnowledgeBaseId(chunk) === libraryId);
+            if (trace) {
+              trace.returned = result.chunks.length;
+              trace.scoped = scoped.length;
+              trace.kept = Math.min(scoped.length, perLibraryTop);
+              if (typeof result.totalCount === 'number' && Number.isSafeInteger(result.totalCount)) trace.platformTotal = result.totalCount;
+              let inScope = 0;
+              // Keep the response order and bound the trace even when the platform ignores top.
+              trace.hits = result.chunks.slice(0, 40).filter(isRecord).map(chunk => {
+                if (citationKnowledgeBaseId(chunk) !== libraryId) return describeCandidate(chunk, 'outside-scope');
+                return { ...describeCandidate(chunk, inScope++ < perLibraryTop ? 'received' : 'per-library-limit'),
+                  documentName: diagnosticDocumentName(chunk, credentials) };
+              });
+            }
             if (result.chunks.length && !scoped.length) throw new PlatformError('INVALID_SEARCH_SCOPE', '平台切片与请求的知识库不匹配');
             return scoped.slice(0, perLibraryTop);
           });
@@ -73,10 +121,17 @@ export async function retrieveLibraries({ config, gate, settings, query, ids, to
           completed.add(libraryId);
           success++;
         } catch (error) {
+          if (trace) trace.errorCode = roundSignal.aborted ? diagnosticErrorCode(roundSignal.reason)
+            : isRecord(error) && error.name === 'TimeoutError' ? 'LIBRARY_SEARCH_TIMEOUT' : diagnosticErrorCode(error);
           if (roundSignal.aborted) return;
           const failure = isRecord(error) && error.name === 'TimeoutError' ? new PlatformError('LIBRARY_SEARCH_TIMEOUT', '知识库检索超时') : error;
           if (firstFailure && errorCode(firstFailure) !== errorCode(failure)) mixedFailures = true;
           firstFailure ??= failure;
+        } finally {
+          if (trace) {
+            trace.ms = Math.round(performance.now() - began);
+            libraryFinished?.(trace);
+          }
         }
       }
     }
@@ -136,12 +191,9 @@ function evidenceKey(citation: Citation) {
 
 /** 按平台得分选证据。顺序相同时沿用稳定的库 ID 和库内顺序，保留所有入选证据的重复来源。 */
 export function selectEvidence(chunks: readonly JsonRecord[], catalog: readonly KnowledgeBase[], ids: ReadonlySet<string>, snapshotId: string, limit: number, threshold: number,
-  evaluate?: (item: EvidenceText) => EvidenceDecision, report?: (candidate: CandidateDecision) => void): Citation[] {
-  function diagnose(raw: JsonRecord, reason: string, topics: number[] = []) {
-    if (!report) return;
-    const id = (value: unknown) => typeof value === 'string' && /^[\w.:-]{1,128}$/.test(value) ? value : '';
-    const score = validScore(raw);
-    report({ libraryId: id(citationKnowledgeBaseId(raw)), chunkId: id(raw.chunk_id ?? raw.id), score: score < 0 ? null : score, topics, reason });
+  evaluate?: (item: EvidenceText) => EvidenceDecision, report?: CandidateReport): Citation[] {
+  function diagnose(raw: JsonRecord, reason: string, topics: number[] = [], citation?: Citation) {
+    report?.(describeCandidate(raw, reason, topics), raw, citation);
   }
   const ordered = chunks.flatMap(raw => {
     if (!ids.has(citationKnowledgeBaseId(raw))) { diagnose(raw, 'outside-scope'); return []; }
@@ -151,7 +203,7 @@ export function selectEvidence(chunks: readonly JsonRecord[], catalog: readonly 
     const match: EvidenceDecision = evaluate?.({ text: citation.modelText, documentName: citation.documentName,
       documentVersion: citation.documentVersion, effectiveDate: citation.effectiveDate })
       ?? { topics: [0], directTopics: [0], quality: 2, reason: 'direct' };
-    if (!match.topics.length) { diagnose(raw, match.reason); return []; }
+    if (!match.topics.length) { diagnose(raw, match.reason, [], citation); return []; }
     return [{ raw, citation, match, score }];
   }).sort((a, b) => b.match.quality - a.match.quality || b.score - a.score);
   const seenSlices = new Set();
@@ -159,7 +211,7 @@ export function selectEvidence(chunks: readonly JsonRecord[], catalog: readonly 
   for (const item of ordered) {
     const { raw, citation, match } = item;
     const sliceKey = JSON.stringify([citation.knowledgeBaseId, citation.chunkId || [citation.documentId, citation.documentName, citation.page, citation.modelText, citation.images.map(image => image.id)]]);
-    if (seenSlices.has(sliceKey)) { diagnose(raw, 'duplicate-slice', match.topics); continue; }
+    if (seenSlices.has(sliceKey)) { diagnose(raw, 'duplicate-slice', match.topics, citation); continue; }
     seenSlices.add(sliceKey);
     const key = evidenceKey(citation) ?? sliceKey;
     const group = evidenceGroups.get(key);
@@ -183,8 +235,8 @@ export function selectEvidence(chunks: readonly JsonRecord[], catalog: readonly 
     chosen.add(key);
   }
   for (const [key, { primary, equivalents }] of evidenceGroups) {
-    diagnose(primary.raw, chosen.has(key) ? 'kept-' + primary.match.reason : 'result-limit', primary.match.topics);
-    for (const item of equivalents) diagnose(item.raw, chosen.has(key) ? 'kept-equivalent' : 'result-limit', item.match.topics);
+    diagnose(primary.raw, chosen.has(key) ? 'kept-' + primary.match.reason : 'result-limit', primary.match.topics, primary.citation);
+    for (const item of equivalents) diagnose(item.raw, chosen.has(key) ? 'kept-equivalent' : 'result-limit', item.match.topics, item.citation);
   }
   return [...evidenceGroups].filter(([key]) => chosen.has(key)).map(([, { primary: { citation }, equivalents }], index) => {
     const citationId = `K${snapshotId.slice(0, 8)}-${index + 1}`;

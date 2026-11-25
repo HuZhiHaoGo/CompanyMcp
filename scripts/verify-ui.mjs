@@ -4,6 +4,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
 import { createKnowledgeServer } from '../src/server.ts';
+import { spreadsheetFixture } from '../tests/spreadsheet-fixture.mjs';
 
 const root = path.resolve(import.meta.dirname, '..');
 const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'tbea-ui-'));
@@ -193,6 +194,40 @@ try {
     await page.close();
     console.log(`${name}: document filter, continuous preview, lazy page loading and return OK`);
   }
+  const sheetPage = await browser.newPage({ viewport: { width: 390, height: 780 } });
+  const sheets = { xls: spreadsheetFixture('biff8'), xlsx: spreadsheetFixture('xlsx') };
+  const sheetDocuments = Object.keys(sheets).map(format => ({ id: format, name: '工作簿.' + format, format, preview: 'available' }));
+  let currentFormat = 'xlsx';
+  let invalidSheet = false;
+  const sheetResult = sheetPage.waitForRequest(request => request.url().includes('/demo/library/preview-result?') && request.url().includes('parseMs='));
+  await sheetPage.route('**/demo/library/documents?**', route => route.fulfill({ json: { documents: sheetDocuments, total: 2, complete: true } }));
+  await sheetPage.route('**/demo/library/open?**', route => {
+    currentFormat = new URL(route.request().url()).searchParams.get('documentId');
+    return route.fulfill({ json: { previewId: currentFormat, sheetBytes: sheets[currentFormat].length, sheetFormat: currentFormat } });
+  });
+  await sheetPage.route('**/demo/library/sheet-range?**', route => {
+    const { searchParams } = new URL(route.request().url());
+    const content = invalidSheet ? Buffer.alloc(sheets[currentFormat].length) : sheets[currentFormat];
+    return route.fulfill({ body: content.subarray(Number(searchParams.get('begin')), Number(searchParams.get('end'))), contentType: 'application/octet-stream' });
+  });
+  await sheetPage.goto('http://127.0.0.1:17869/demo?library');
+  for (const format of ['xls', 'xlsx']) {
+    await sheetPage.getByRole('button', { name: new RegExp('工作簿\\.' + format + ' ·|工作簿\\.' + format + '\\s') }).click();
+    await sheetPage.getByRole('table', { name: '数据', exact: true }).waitFor();
+    if (await sheetPage.getByRole('cell', { name: '测试表头' }).getAttribute('colspan') !== '2') throw new Error('Merged Excel cell is missing');
+    for (const value of ['中文单元格', '1,234.50', '2025-06-18', '2,469.00']) await sheetPage.getByRole('cell', { name: value, exact: true }).waitFor();
+    await sheetPage.getByRole('button', { name: '下一组' }).click();
+    await sheetPage.getByRole('cell', { name: '次页行', exact: true }).waitFor();
+    await sheetPage.getByRole('combobox', { name: '工作表' }).selectOption({ label: '汇总' });
+    await sheetPage.getByRole('cell', { name: '第二张工作表' }).waitFor();
+    await sheetPage.getByRole('button', { name: '返回文档目录' }).click();
+  }
+  await sheetResult;
+  invalidSheet = true;
+  await sheetPage.getByRole('button', { name: /工作簿\.xlsx/ }).click();
+  await sheetPage.getByRole('alert').getByText('Excel 文件损坏或格式不受支持，无法预览。').waitFor();
+  await sheetPage.close();
+  console.log('Excel: XLS, XLSX, first-sheet log, sheet selection, number/date, merged cells, row groups and errors OK');
   const dual = await browser.newPage();
   const base = 'http://127.0.0.1:17869';
   let openedDocuments = 0;

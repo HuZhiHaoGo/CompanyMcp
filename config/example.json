@@ -12,7 +12,7 @@
     "converters": {}
   },
   "knowledgeDirectory": { "mode": "auto", "refreshSeconds": 60 },
-  "retrieval": { "perLibraryTop": 3, "libraryTimeoutMs": 8000, "roundTimeoutMs": 30000 },
+  "retrieval": { "perLibraryTop": 3, "libraryTimeoutMs": 8000, "roundTimeoutMs": 30000, "diagnostics": true, "diagnosticExcerpts": true },
   "platform": {
     "baseUrl": "https://ai.tbea.com",
     "accessKey": "",

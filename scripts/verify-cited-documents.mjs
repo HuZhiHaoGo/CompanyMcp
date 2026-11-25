@@ -20,14 +20,16 @@ try {
   await page.evaluate(() => {
     const E = React.createElement;
     const event = (seq, type, data) => ({ type: 'event', event: { seq, type, data } });
-    const view = snapshotId => ({ schema: 'tbea-view/v1', snapshotId });
+    const view = (snapshotId, count) => ({ schema: 'tbea-view/v1', snapshotId, count });
     const manual = (seq, id) => event(seq, 'user/message', { source: { kind: 'tbea-knowledge-prefetch', view: view(id) } });
     const current = 'c0ffee00-current';
     const citationId = 'Kc0ffee00-1';
     const earlyEvents = [event(1, 'turn/start', { turn: 1 }), manual(2, 'earliest'), event(3, 'turn/end', { turn: 1 })];
     const lateEvents = [event(12, 'turn/start', { turn: 3 }),
       event(13, 'tool/call', { turn: 3, name: 'mcp__tbea__search_knowledge', callId: 'search' }),
-      event(14, 'tool/result', { turn: 3, message: { source: { callId: 'search' } }, meta: view(current) }),
+      event(14, 'tool/result', { turn: 3, message: { source: { callId: 'search' } }, meta: view(current, 1) }),
+      event(141, 'tool/call', { turn: 3, name: 'mcp__tbea__search_knowledge', callId: 'empty' }),
+      event(142, 'tool/result', { turn: 3, message: { source: { callId: 'empty' } }, meta: view('empty', 0) }),
       event(15, 'assistant/message', { turn: 3, message: { content: [{ type: 'text', text: '[检修作业规范](Kc0ffee00-1)' }] } }),
       event(16, 'turn/end', { turn: 3 })];
     const deniedEvents = [event(5, 'turn/start', { turn: 2 }), manual(6, 'denied'), event(7, 'turn/end', { turn: 2 })];
@@ -46,7 +48,7 @@ try {
       }
     };
     const citation = (documentId, documentName) => ({ citationId: 'c-' + documentId, knowledgeBaseId: 'kb-a', knowledgeBaseName: '工程资料', documentId, documentName });
-    const common = { ...citation('same', '检修作业规范.pdf'), citationId };
+    const common = { ...citation('same', '检修作业规范.pdf'), citationId, chunkId: 'target-chunk', content: '命中的切片原文。', tables: [], images: [] };
     const earliest = citation('old', '首轮现场记录.pdf');
     window.requests = [];
     window.fetch = async (_url, options) => {
@@ -55,7 +57,8 @@ try {
       if (endpoint === 'selection') return Response.json({ ok: true, value: { selected: false } });
       if (endpoint === 'snapshot') {
         if (args.snapshotId === 'denied') return Response.json({ ok: false, error: { message: '权限已变更' } });
-        return Response.json({ ok: true, value: { citations: args.snapshotId === 'earliest' ? [common, earliest] : [common] } });
+        const citations = args.snapshotId === 'earliest' ? [common, earliest] : args.snapshotId === 'empty' ? [] : [common];
+        return Response.json({ ok: true, value: { citations } });
       }
       if (endpoint === 'library-open') return Response.json({ ok: true, value: {
         previewId: 'preview', html: '<p>原文预览内容</p>'
@@ -63,7 +66,7 @@ try {
       if (endpoint === 'library-preview-result') return Response.json({ ok: true, value: { recorded: true } });
       throw new Error(endpoint);
     };
-    let entry, dock;
+    let entry, dock, tail;
     plugin.apply({
       effect: callback => callback(),
       commandUi: { register() {} },
@@ -72,6 +75,7 @@ try {
       slots: { inject: (_name, callback) => callback(), register(spec, component) {
         if (spec.name === 'conversation.view') entry = { spec, component };
         if (spec.name === 'conversation.input.dock') dock = { spec, component };
+        if (spec.name === 'conversation.chat.turnTail') tail = { spec, component };
       } }
     });
     const injected = entry.spec.inject('session-1');
@@ -81,8 +85,9 @@ try {
       const content = chat
         ? E('div', null, ...[1, 2, 3].map(turn => E('div', { key: turn, style: { height: '640px' }, 'data-chat-turn': turn,
           'data-chat-anchor-key': 'turn-' + turn, 'data-chat-flow-kind': 'input-message' }, '问题 ' + turn,
-        E('div', { 'data-chat-turn': turn, 'data-chat-flow-kind': 'assistant' },
-          E('button', { title: citationId, onClick() { window.nativeFileOpened = true; } }, turn === 3 ? '正文链接' : '跨轮链接 ' + turn)))))
+        E('div', { 'data-chat-turn': turn, 'data-chat-flow-kind': 'assistant-step', 'data-chat-group-part': 'response' },
+          E('button', { title: citationId, onClick() { window.nativeFileOpened = true; } }, turn === 3 ? '正文链接' : '跨轮链接 ' + turn)),
+        E(tail.component, { ...tail.spec.inject('session-1'), turn: { turn } }))))
         : E(entry.component, { ...injected, openView(id, focus) { window.jump = [id, focus]; setChat(true); } });
       return E(React.Fragment, null,
         E('div', { 'data-slot': 'conversation.session' }, E('div', { 'data-slot': 'conversation.view' }, content)),
@@ -105,15 +110,23 @@ try {
   await row.getByRole('button', { name: '第 3 轮' }).click();
   await page.waitForFunction(() => document.activeElement?.getAttribute('data-chat-turn') === '3' && document.activeElement.getBoundingClientRect().top < 25);
   assert.deepEqual(await page.evaluate(() => window.jump), ['chat', 'turn:3']);
+  const supplemental = page.getByRole('region', { name: '补充检索的参考来源' });
+  await supplemental.getByRole('button', { name: /参考来源/ }).click();
+  await supplemental.getByText('命中的切片原文。', { exact: true }).waitFor();
+  assert.equal(await supplemental.getByRole('button', { name: /参考来源/ }).count(), 1);
+  const opens = await page.evaluate(() => requests.filter(row => row.endpoint === 'library-open').length);
   await page.getByRole('button', { name: '正文链接' }).click();
-  const dialog = page.getByRole('dialog', { name: '知识库引用原文' });
+  const dialog = page.getByRole('dialog', { name: '知识库引用' });
   await dialog.getByRole('heading', { name: '检修作业规范.pdf' }).waitFor();
+  await dialog.getByLabel('命中切片').getByText('命中的切片原文。', { exact: true }).waitFor();
+  assert.equal(await page.evaluate(() => requests.filter(row => row.endpoint === 'library-open').length), opens);
+  await dialog.getByRole('button', { name: '查看原文' }).click();
   await dialog.getByLabel('文本原文预览').getByText('原文预览内容').waitFor();
-  await dialog.getByRole('button', { name: '关闭引用预览' }).click();
+  await dialog.getByRole('button', { name: '关闭引用' }).click();
   await page.getByRole('button', { name: '跨轮链接 1' }).click();
   await dialog.getByRole('alert').getByText('对应轮次没有可打开的知识库引用。').waitFor();
   assert.equal(await page.evaluate(() => window.nativeFileOpened), undefined);
   assert.equal(await page.evaluate(() => window.pages), 2);
   assert.deepEqual(errors, []);
-  console.log('Chrome 验证通过：翻阅两页旧历史、同文档去重、权限错误后继续显示、原文预览、按轮次跳转。');
+  console.log('Chrome 验证通过：历史翻页、权限校验、补充来源、正文精确定位切片、查看原文和轮次跳转。');
 } finally { await browser.close(); }

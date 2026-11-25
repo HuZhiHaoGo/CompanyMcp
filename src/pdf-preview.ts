@@ -2,7 +2,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 
 export async function pdfViewerAsset(root: string, name: string | null) {
-  if (!name || (!['pdf.mjs', 'pdf.worker.mjs'].includes(name) && !/^(?:cmaps|standard_fonts|wasm)\/[a-zA-Z0-9][a-zA-Z0-9_.-]*$/u.test(name))) {
+  if (!name || (!['pdf.mjs', 'pdf.worker.mjs', 'sheet.worker.mjs'].includes(name) && !/^(?:cmaps|standard_fonts|wasm)\/[a-zA-Z0-9][a-zA-Z0-9_.-]*$/u.test(name))) {
     return new Response(null, { status: 404 });
   }
   const bytes = await fs.readFile(path.join(root, name)).catch(error => {

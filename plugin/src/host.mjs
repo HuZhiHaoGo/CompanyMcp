@@ -10,6 +10,7 @@ import { pdfViewerAsset } from '../../src/pdf-preview.ts';
 import { DESKTOP_CONFIG_TEMPLATE, DESKTOP_DEPLOYMENT_CONFIG, desktopConfigLocations } from '../../src/desktop-config.ts';
 import { initializeDesktopConfig } from '../../src/desktop-initialization.ts';
 import { SERVICE_VERSION } from '../../src/runtime.ts';
+import { diagnosticId } from '../../src/diagnostics.ts';
 import { SelectionStore, createPrefetch } from './selection.mjs';
 import { ServiceManager } from './service-manager.mjs';
 import { createSemanticModel } from './semantic-model.mjs';
@@ -32,7 +33,7 @@ export async function apply(ctx, config = {}) {
   const local = explicitConfig ? await readConfig(config.configFile, path.isAbsolute(dshHome ?? '') ? { defaultDiagnosticsDirectory: path.join(dshHome, 'logs') } : undefined).catch(error => {
     if (error.code === 'ENOENT') throw new Error(`知识库配置文件不存在，请先运行管理员初始化脚本：${config.configFile}`, { cause: error });
     throw error;
-  }) : (await initializeDesktopConfig(desktopConfigLocations(process.env.DSH_HOME, projectRoot), [
+  }) : (await initializeDesktopConfig(desktopConfigLocations(process.env.DSH_HOME), [
     path.join(packageRoot, DESKTOP_DEPLOYMENT_CONFIG),
     path.join(packageRoot, DESKTOP_CONFIG_TEMPLATE),
   ])).config;
@@ -43,7 +44,13 @@ export async function apply(ctx, config = {}) {
   const lifetime = new AbortController(); let connection; let connecting;
   // 新安装的资源来自实际插件包，旧安装仍可通过 projectRoot 指向外层资源。
   const pdfAssetsDirectory = path.join(packageRoot, 'lib/pdfjs');
-  const service=new ServiceManager(local,{ demoDirectory:path.join(projectRoot,'dist/demo'), pdfAssetsDirectory });
+  const service=new ServiceManager(local,{
+    demoDirectory:path.join(projectRoot,'dist/demo'), pdfAssetsDirectory,
+    getOffice: () => {
+      const provider = ctx.get?.('officeToPdf');
+      return typeof provider?.convert === 'function' ? provider : undefined;
+    },
+  });
   const clients = new Set();
   const requestScope = new AsyncLocalStorage();
   const selections = new SelectionStore(local.dataDirectory); const status = new Map();
@@ -79,7 +86,7 @@ export async function apply(ctx, config = {}) {
   }
 
   // 自动工具调用与程序预检索复用相同的真实 MCP 通道、响应校验和取消信号。
-  async function callTool(name, args, requestSignal, manuallySelected = false, agent, selection) {
+  async function callTool(name, args, requestSignal, manuallySelected = false, agent, selection, messageId) {
     const signal = AbortSignal.any([requestSignal, lifetime.signal, AbortSignal.timeout(120000)]); signal.throwIfAborted();
     // 连接建立可被当前问题取消，但不关闭其他会话共享的 MCP 客户端。
     const transport = await new Promise((resolve, reject) => {
@@ -89,10 +96,14 @@ export async function apply(ctx, config = {}) {
     signal.throwIfAborted();
     const semantic = name === 'search_knowledge' && agent && local.mode === 'live' && local.retrieval?.semanticReview !== false
       ? createSemanticModel(ctx, agent, selection, local.retrieval?.semanticModelOrigins) : undefined;
+    const sessionId = name === 'search_knowledge' && diagnosticId(agent?.id);
+    const sourceMessageId = name === 'search_knowledge' && diagnosticId(messageId);
     try {
       result = await service.withSemanticModel(semantic, semanticId => {
         const meta = { ...(manuallySelected ? { 'tbea/trigger': 'manual' } : {}),
-          ...(semanticId ? { 'tbea/semantic-request': semanticId } : {}) };
+          ...(semanticId ? { 'tbea/semantic-request': semanticId } : {}),
+          ...(sessionId ? { 'tbea/session-id': sessionId } : {}),
+          ...(sourceMessageId ? { 'tbea/message-id': sourceMessageId } : {}) };
         const params = { name, arguments: args, ...(Object.keys(meta).length ? { _meta: meta } : {}) };
         return requestScope.run(signal, () => transport.callTool(params, undefined, { signal, timeout: 120000 }));
       });
@@ -181,7 +192,7 @@ export async function apply(ctx, config = {}) {
         if (endpoint === 'select') status.delete(args.sessionId);
         return { ok:true,value:{ selected,autoRetrieveKnowledge,...(status.get(args.sessionId)||{}),...service.snapshot() } };
       }
-      const libraryAction = ['catalog', 'documents', 'open', 'preview-progress', 'preview-result', 'pdf-range'].find(name => endpoint === `library-${name}`);
+      const libraryAction = ['catalog', 'documents', 'open', 'preview-progress', 'preview-result', 'pdf-range', 'sheet-range'].find(name => endpoint === `library-${name}`);
       if (!libraryAction && !['snapshot', 'asset', 'refresh'].includes(endpoint)) throw new Error('未知知识展示操作');
       await service.ensure();
       if (endpoint === 'refresh') {
@@ -189,7 +200,7 @@ export async function apply(ctx, config = {}) {
       }
       const url = new URL(libraryAction ? `/library/${libraryAction}` : endpoint === 'asset' ? '/asset' : '/snapshot', base);
       if (libraryAction) {
-        for (const key of ['libraryId', 'documentId', 'previewId', 'status', 'elapsedMs', 'begin', 'end']) {
+        for (const key of ['libraryId', 'documentId', 'previewId', 'status', 'elapsedMs', 'parseMs', 'pdfAssetMs', 'pdfLoadMs', 'pdfRenderMs', 'begin', 'end']) {
           const value = args?.[key];
           if (typeof value === 'string' || typeof value === 'number') url.searchParams.set(key, String(value));
         }
@@ -202,7 +213,7 @@ export async function apply(ctx, config = {}) {
         const error = await response.json().catch(() => ({}));
         return { ok: false, error: { code: error.code || 'TBEA_VIEW_FAILED', message: error.message || `知识服务 HTTP ${response.status}`, details: {} } };
       }
-      if (endpoint === 'asset' || libraryAction === 'pdf-range') {
+      if (endpoint === 'asset' || libraryAction === 'pdf-range' || libraryAction === 'sheet-range') {
         const bytes = new Uint8Array(await response.arrayBuffer());
         return { ok: true, value: { mediaType: response.headers.get('content-type'), bytes } };
       }

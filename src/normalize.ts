@@ -15,6 +15,8 @@ type HtmlNode = DefaultTreeAdapterTypes.Node;
 type Table = Citation['tables'][number];
 const str = (...items: unknown[]) => items.find((item): item is string => typeof item === 'string' && Boolean(item.trim())) || '';
 export const citationKnowledgeBaseId = (raw: unknown) => isRecord(raw) ? str(raw.knowledgebase_id, raw.knowledgeBaseId, raw.dataset_id) : '';
+export const citationRawText = (raw: JsonRecord) => str(raw.content, raw.text, raw.chunk_content, raw.page_content);
+export const citationDocumentName = (raw: JsonRecord) => str(raw.document_name, raw.title, isRecord(raw.meta) && raw.meta.title);
 const children = (node: HtmlNode) => 'childNodes' in node ? node.childNodes : [];
 const attr = (node: HtmlNode, name: string) => 'attrs' in node ? node.attrs.find(a => a.name === name)?.value || '' : '';
 const tag = (node: HtmlNode) => 'tagName' in node ? node.tagName : '';
@@ -69,7 +71,7 @@ function htmlParts(html: string, images: Omit<CitationImage, 'id'>[], tables: Ta
 
 /** 同时解析 HTML 和 GFM；只输出纯文字/表格结构，浏览器从不执行切片原始 HTML。 */
 export function normalizeCitation(raw: JsonRecord, index: number, snapshotId: string, catalog: readonly KnowledgeBase[] = []): Citation {
-  let content = str(raw.content, raw.text, raw.chunk_content, raw.page_content);
+  let content = citationRawText(raw);
   // 部分平台样例把换行二次转义，仅当没有实际换行时解除一层，避免破坏表格转义。
   if (!content.includes('\n')) content = content.replace(/\\r\\n|\\n/g, '\n');
   const images: Omit<CitationImage, 'id'>[] = [];
@@ -118,7 +120,7 @@ export function normalizeCitation(raw: JsonRecord, index: number, snapshotId: st
   const citationId = `K${snapshotId.slice(0, 8)}-${index + 1}`;
   const tableText = tables.map(t => t.rows.map(row => row.map(c => c.text).join(' | ')).join('\n')).join('\n\n');
   return { citationId, chunkId: str(raw.chunk_id, raw.chunkId, raw.id), knowledgeBaseId: kb, knowledgeBaseName: catalog.find(k => k.id === kb)?.name || kb,
-    documentId: str(raw.document_id, raw.documentId), documentName: str(raw.document_name, raw.title, meta.title) || '知识库切片',
+    documentId: str(raw.document_id, raw.documentId), documentName: citationDocumentName(raw) || '知识库切片',
     documentGroupId, documentVersion, effectiveDate,
     page: Number.isFinite(Number(page)) && Number(page) > 0 ? Number(page) : undefined,
     score: raw.rank_score ?? raw.rerank_score ?? raw.score, content: content.trim(), tables, images: uniqueImages,
@@ -134,30 +136,39 @@ export function publicSnapshot(snapshot: Snapshot, allowed?: ReadonlySet<string>
 }
 
 /** 所有引用正文均为待核对的资料，而不是可执行指令；图片 URL 和字节不进入模型上下文。 */
-export function modelResult(snapshot: Snapshot, maxCharacters: number, citations: readonly Citation[] = snapshot.citations, threshold = 0, synonyms?: readonly EvidenceSynonym[]) {
+export function modelResult(snapshot: Snapshot, maxCharacters: number, citations: readonly Citation[] = snapshot.citations, threshold = 0,
+  synonyms?: readonly EvidenceSynonym[], report?: (citation: Citation, reason: string, truncated: boolean) => void) {
   let remaining = maxCharacters;
   const evidence = snapshot.mode === 'live' && !snapshot.retrievalSkipped ? checkEvidence(snapshot.query, synonyms) : undefined;
   const clarification = evidence?.clarification || (snapshot.semanticClarification ? '请补充要办理的具体事项、对象或适用场景。' : undefined);
   const decisions: EvidenceDecision[] = [];
   const projected = citations.flatMap(c => {
     const text = c.modelText.slice(0, remaining);
+    const truncated = text.length < c.modelText.length;
     let supportingContext = false;
     // 旧快照和刷新后的详情也校验。被截断的正文只能依据实际发给模型的部分判断。
     if (evidence) {
-      if (clarification || evidenceScore(c.source.rank_score) < threshold) return [];
+      if (clarification || evidenceScore(c.source.rank_score) < threshold) {
+        report?.(c, clarification ? 'clarification' : 'below-threshold', truncated);
+        return [];
+      }
       const input = { ...c, text };
       const proof = verifiedSemanticDecision({ ...input, text: c.modelText }, c.semanticEvidence, text);
       const scoped = proof ? evidence.semanticTopics(input) : [];
       const topics = proof?.topics.filter(topic => scoped.includes(topic)) ?? [];
       const decision = proof && topics.length ? { ...proof, topics, directTopics: topics } : evidence.evaluate(input);
-      if (!decision.topics.length) return [];
+      if (!decision.topics.length) {
+        report?.(c, truncated ? 'rejected-after-truncation' : decision.reason, truncated);
+        return [];
+      }
       supportingContext = !decision.directTopics.length;
       decisions.push(decision);
     }
     remaining -= text.length;
+    report?.(c, supportingContext ? 'sent-related' : 'sent', truncated);
     return [{ citationId: c.citationId, knowledgeBase: c.knowledgeBaseName, documentName: c.documentName, chunkId: c.chunkId, page: c.page,
       ...(supportingContext ? { support: 'related' as const } : {}),
-      documentVersion: c.documentVersion, effectiveDate: c.effectiveDate, text, truncated: text.length < c.modelText.length }];
+      documentVersion: c.documentVersion, effectiveDate: c.effectiveDate, text, truncated }];
   });
   const assessment = snapshot.retrievalSkipped ? { status: 'not_needed' as const, missingTopics: [] } : evidence?.summarizeDecisions(decisions);
   const coverage = snapshot.coverage;

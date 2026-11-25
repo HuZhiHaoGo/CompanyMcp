@@ -6,7 +6,7 @@
 
 包含两个工具：`mcp__tbea__search_knowledge`、`mcp__tbea__get_chunk_detail`。Host 使用标准 MCP 客户端连接知识服务。`output.render` 输出文字证据，`output.presentationMeta` 存放快照标识、覆盖状态等展示字段。展示层通过 Connection 的同源鉴权接口获取图片。
 
-匠宝管理员可在解压包的 `plugin/config/example.json` 直接填写正式配置，再在「插件管理」中添加并启用同一份 `plugin`。首次启用时插件会从该模板自动创建 `DSH_HOME` 下的 `dsh-mcp-tbea-knowledge.json`。已有配置会继续使用。新装默认启用 PDF.js。LibreOffice 随包提供，负责 Word、PPT 等格式的 PDF 转换。Markdown 和纯文本直接展示。普通 Harness Profile 与旧版的显式 `configFile` 部署继续使用原有初始化方式。
+匠宝管理员可在解压包的 `plugin/config/example.json` 直接填写正式配置，再在「插件管理」中添加并启用同一份 `plugin`。首次启用时插件会从该模板自动创建 `DSH_HOME` 下的 `dsh-mcp-tbea-knowledge.json`。已有配置会继续使用。新装默认启用原文预览。Excel 在面板直接查看，Word 和 PPT 调用匠宝内置服务转换为 PDF，PDF 由 PDF.js 显示。Markdown 和纯文本直接展示。普通 Harness Profile 与旧版的显式 `configFile` 部署继续使用原有初始化方式。
 
 具体安装、正式配置、故障排查和卸载见 [使用与维护手册](../docs/使用与维护手册.md)。
 
@@ -14,7 +14,7 @@
 
 匠宝托管服务可利用当前会话已确认的内网模型，自动复核员工口语和候选切片，并对必要的改写做一次补查。其他业务知识库走同一流程，同义词配置可作为补充。
 
-会话顶部的「引用文档」汇总各轮的公司知识库文档，并标明「正文已引用」。点击文档名预览原文，点击「查看引用」回到对应轮次。每轮可从「参考来源」查看切片、表格和图片。回答正文里的知识库引用链接经对应轮次和权限校验后打开原文。
+会话顶部的「引用文档」汇总各轮的公司知识库文档，并标明「正文已引用」。点击文档名预览原文，点击「查看引用」回到对应轮次。每轮可从「参考来源」查看切片、表格和图片。回答正文里的知识库引用链接经对应轮次和权限校验后打开命中的切片，可继续查看原文。回答结束后可展开「补充检索」中的来源。
 
 在 DSH 输入框输入 `/` 或点击 `+`，可从菜单选择「公司知识库」。输入 `/公司知识库` 后也可按回车选中。`@` 用于 DSH 原生引用。选中后，Host 通过 `agent/pre-step` 在模型回答前检索，会话节点 `conversation.chat.node` 显示来源。项目配置 `autoRetrieveKnowledge` 默认开启，未手动选中时由模型按需检索。设为 `false` 后 Host 不注册模型工具，手动预检索和来源展示仍由插件处理。MCP 默认随 Host 启动，会话开关保存在 `data/dsh-selection`。
 

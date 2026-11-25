@@ -8,10 +8,9 @@ export const PLATFORM_SEARCH_PATH = '/openapi/v1/knowledgeBase?Action=QueryKnowl
 export const PLATFORM_LIST_PATH = '/api/ai_apaas/v1/knowledgeBase?Action=DescribeKnowledgeBases';
 export const PLATFORM_CHUNK_PATH = '/api/ai_apaas/v1/knowledgeBase?Action=DescribeChunk';
 const LEGACY_SEARCH_PATH = '/api/ai_apaas/v1/knowledgebases/query';
-export const RETRIEVAL_DEFAULTS = Object.freeze({ perLibraryTop: 3, libraryTimeoutMs: 8000, roundTimeoutMs: 30000 });
+export const RETRIEVAL_DEFAULTS = Object.freeze({ perLibraryTop: 3, libraryTimeoutMs: 8000, roundTimeoutMs: 30000, diagnostics: true });
 
 interface ConfigLocations {
-  bundledOffice?: string;
   defaultDataDirectory?: string;
   defaultDiagnosticsDirectory?: string;
 }
@@ -68,13 +67,14 @@ export async function validateConfig(config: Record<string, unknown>, filename: 
   const overrides = config.retrieval ?? {};
   if (!isRecord(overrides)) throw new Error('retrieval 必须为对象');
   const retrieval = { ...RETRIEVAL_DEFAULTS, ...overrides };
-  for (const [key, max] of Object.entries({ perLibraryTop: 20, libraryTimeoutMs: 60000, roundTimeoutMs: 100000 }) as [keyof typeof retrieval, number][]) {
+  for (const [key, max] of [['perLibraryTop', 20], ['libraryTimeoutMs', 60000], ['roundTimeoutMs', 100000]] as const) {
     const value = retrieval[key];
     if (!Number.isInteger(value) || value < 1 || value > max) throw new Error(`retrieval.${key} 必须为 1～${max} 的整数`);
   }
   if (retrieval.libraryTimeoutMs > retrieval.roundTimeoutMs) throw new Error('单库超时不能大于整轮检索超时');
   const evidenceThreshold = overrides.evidenceScoreThreshold;
   if (overrides.diagnostics !== undefined && typeof overrides.diagnostics !== 'boolean') throw new Error('retrieval.diagnostics 必须为 true 或 false');
+  if (overrides.diagnosticExcerpts !== undefined && typeof overrides.diagnosticExcerpts !== 'boolean') throw new Error('retrieval.diagnosticExcerpts 必须为 true 或 false');
   if (overrides.semanticReview !== undefined && typeof overrides.semanticReview !== 'boolean') throw new Error('retrieval.semanticReview 必须为 true 或 false');
   if (evidenceThreshold !== undefined && (typeof evidenceThreshold !== 'number' || !Number.isFinite(evidenceThreshold) || evidenceThreshold < 0 || evidenceThreshold > 1)) {
     throw new Error('retrieval.evidenceScoreThreshold 必须为 0～1 的数字');
@@ -83,9 +83,10 @@ export async function validateConfig(config: Record<string, unknown>, filename: 
   return {
     ...config, mode, port, serviceToken, platform, knowledgeBases, dataDirectory, limits,
     diagnosticsDirectory: options.defaultDiagnosticsDirectory ?? path.join(dataDirectory, 'logs'),
-    retrieval: { ...retrieval, evidenceScoreThreshold: evidenceThreshold, diagnostics: overrides.diagnostics, synonyms: readSynonyms(overrides.synonyms),
+    retrieval: { ...retrieval, evidenceScoreThreshold: evidenceThreshold, diagnostics: overrides.diagnostics ?? RETRIEVAL_DEFAULTS.diagnostics, synonyms: readSynonyms(overrides.synonyms),
+      diagnosticExcerpts: overrides.diagnosticExcerpts ?? true,
       semanticReview: overrides.semanticReview === false ? false : undefined, semanticModelOrigins: readModelOrigins(overrides.semanticModelOrigins) },
-    documentPreview: await readDocumentPreview(config.documentPreview, directoryPath, options),
+    documentPreview: readDocumentPreview(config.documentPreview, directoryPath),
     service: service && { ...service, autoStart },
     knowledgeDirectory: { mode: directoryMode, refreshSeconds },
     // 未配置的旧版本继续允许模型按需检索。
@@ -122,9 +123,8 @@ function readSynonyms(value: unknown): EvidenceSynonym[] | undefined {
   });
 }
 
-async function readDocumentPreview(value: unknown, directory: string, { bundledOffice }: ConfigLocations): Promise<DocumentPreviewConfig | undefined> {
-  if (value === undefined) return undefined;
-  if (!isRecord(value) || typeof value.enabled !== 'boolean') throw new Error('documentPreview.enabled 必须为 true 或 false');
+function readDocumentPreview(value: unknown = {}, directory: string): DocumentPreviewConfig {
+  if (!isRecord(value) || (value.enabled !== undefined && typeof value.enabled !== 'boolean')) throw new Error('documentPreview.enabled 必须为 true 或 false');
   const { allowPdfViewer } = value;
   if (allowPdfViewer !== undefined && typeof allowPdfViewer !== 'boolean') throw new Error('documentPreview.allowPdfViewer 必须为 true 或 false');
   function program(input: unknown, key: string) {
@@ -139,20 +139,7 @@ async function readDocumentPreview(value: unknown, directory: string, { bundledO
     if (!/^[a-z0-9]{2,8}$/.test(format)) throw new Error('转换组件键必须为小写文件扩展名，例如 ofd');
     converters[format] = program(input, `converters.${format}`);
   }
-  let officeProgram = program(office, 'office');
-  let officeBundled: boolean | undefined;
-  if (value.enabled && allowPdfViewer !== false && !officeProgram && process.platform === 'win32') {
-    // 匠宝只查已安装插件，独立服务也能使用同一离线包中的组件。
-    const relative = 'tools/libreoffice/program/soffice.com';
-    for (const candidate of bundledOffice ? [bundledOffice] : [path.resolve(directory, '../plugin', relative), path.resolve(directory, '..', relative)]) {
-      if ((await fs.stat(candidate).catch(() => undefined))?.isFile()) {
-        officeProgram = candidate;
-        officeBundled = true;
-        break;
-      }
-    }
-  }
-  return { enabled: value.enabled, allowPdfViewer: allowPdfViewer ?? true, office: officeProgram, officeBundled, converters };
+  return { enabled: value.enabled ?? true, allowPdfViewer: allowPdfViewer ?? true, office: program(office, 'office'), converters };
 }
 
 function readPlatform(raw: Record<string, unknown>, mode: ServiceConfig['mode']): PlatformConfig {

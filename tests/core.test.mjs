@@ -42,6 +42,7 @@ test('正式检索读取完整分页、逐库发送 ID 与重排模型、过滤�
   let repeatPage = false;
   const config = {
     mode: 'live', knowledgeBases: [], knowledgeDirectory: { mode: 'auto', refreshSeconds: 60 },
+    retrieval: { diagnostics: false },
     platform: { projectId: 'proj-demo', accessKey: 'test', secretKey: 'test',
       searchPath: PLATFORM_SEARCH_PATH, chunkPath: PLATFORM_CHUNK_PATH, rerankModelName: 'bce-reranker-base-v1', rankScoreThreshold: 0.4 },
     limits: { top: 10, maxEvidenceChunks: 1, maxTextCharacters: 3000, maxQueryCharacters: 1024 },

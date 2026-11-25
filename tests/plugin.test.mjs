@@ -42,7 +42,7 @@ test('浏览器产物符合 Harness 模块工厂和 keyed toolview 注册契约'
       }
     } },
   });
-  assert.deepEqual(keys, ['tbea-knowledge-library', 'tbea-knowledge-library', 'mcp__tbea__search_knowledge', 'mcp__tbea__get_chunk_detail', 'tbea-knowledge', 'tbea-knowledge-prefetch', 'tbea-cited-documents']);
+  assert.deepEqual(keys, ['tbea-knowledge-library', 'tbea-knowledge-library', 'mcp__tbea__search_knowledge', 'mcp__tbea__get_chunk_detail', 'tbea-knowledge', 'tbea-knowledge-prefetch', 'tbea-supplemental-sources', 'tbea-cited-documents']);
   assert.equal((await bridge('selection', { sessionId: 'session-a' }, signal)).selected, true);
   const image = await bridge('asset', { sessionId: 'session-a' }, signal);
   assert.equal(image.mediaType, 'image/png');

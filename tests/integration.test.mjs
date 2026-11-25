@@ -141,6 +141,19 @@ test('DSH 托管服务通过真实 MCP 在手动和按需入口使用当前内�
   const result = await tools.get('mcp__tbea__search_knowledge').execute({ query }, { agent, signal });
   assert.equal(result.model.citations[0].chunkId, 'badge');
   assert.equal(modelCalls, 2);
+  const traces = (await fs.readFile(path.join(directory, 'logs/dsh-mcp-tbea-knowledge.jsonl'), 'utf8')).trim().split('\n').map(JSON.parse);
+  const manual = traces.find(trace => trace.searchId === decision.messages[1].source.view.snapshotId);
+  const automatic = traces.find(trace => trace.searchId === result.view.snapshotId);
+  assert.equal(manual.sessionId, agent.id);
+  assert.equal(manual.messageId, 'ask');
+  assert.equal(manual.trigger, 'manual');
+  assert.equal(automatic.sessionId, agent.id);
+  assert.equal(automatic.trigger, 'model');
+  assert.equal(automatic.projection[0].chunkId, 'badge');
+  assert.equal(automatic.projection[0].reason, 'sent');
+  assert.equal(automatic.candidates[0].documentName, '行政制度');
+  assert.equal(automatic.candidates[0].excerpt, passage);
+  assert.doesNotMatch(JSON.stringify(traces), /工牌丢了|test-access|test-secret/);
 });
 
 test('DSH 注册后的工具动态使用鉴权目录摘要，预热与逐库检索共享授权缓存', async t => {

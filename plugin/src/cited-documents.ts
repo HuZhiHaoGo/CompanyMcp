@@ -1,5 +1,5 @@
 import { isRecord } from '../../src/contracts.ts';
-import type { PublicCitation } from '../../src/contracts.ts';
+import type { PublicCitation, PublicSnapshot } from '../../src/contracts.ts';
 import { fromMarkdown } from 'mdast-util-from-markdown';
 import type { Nodes } from 'mdast';
 
@@ -80,13 +80,14 @@ function containsCitation(selection: Set<string> | null | undefined, id: string)
 }
 
 export async function resolveAnswerCitation(entries: readonly unknown[], turn: number, id: string,
-  loadSnapshot: (snapshotId: string) => Promise<unknown>): Promise<SnapshotDocument | undefined> {
+  loadSnapshot: (snapshotId: string) => Promise<unknown>): Promise<(SnapshotDocument & { snapshotId: string; snapshot: PublicSnapshot }) | undefined> {
   if (!answerCitationIds(entries).get(turn)?.has(id)) return;
   const documents = [];
   for (const [snapshotId, turns] of citationReferences(entries)) {
     if (!id.startsWith('K' + snapshotId.slice(0, 8) + '-') || !containsCitation(turns.get(turn), id)) continue;
     const snapshot = await loadSnapshot(snapshotId);
-    documents.push(...snapshotDocuments(snapshot).filter(doc => doc.citationId === id && doc.knowledgeBaseId && doc.documentId));
+    documents.push(...snapshotDocuments(snapshot).filter(doc => doc.citationId === id && doc.knowledgeBaseId)
+      .map(doc => ({ ...doc, snapshotId, snapshot: snapshot as PublicSnapshot })));
   }
   return documents.length === 1 ? documents[0] : undefined;
 }
@@ -108,8 +109,28 @@ function toolResult(value: unknown, schema: string) {
     ? { snapshotId: value.snapshotId, citations: value.citations } : undefined;
 }
 
-export function citationReferences(entries: readonly unknown[]) {
-  const references: CitationReferences = new Map();
+interface SourceView {
+  snapshotId: string;
+  count: number;
+  query?: string;
+  mode?: string;
+  coverage?: unknown;
+  evidenceStatus?: string;
+}
+
+const supplementalByHistory = new WeakMap<readonly unknown[], Map<number, Map<string, SourceView>>>();
+
+function visibleToolSource(value: unknown, countKey: 'count' | 'hitCount'): SourceView | undefined {
+  if (!isRecord(value) || typeof value.snapshotId !== 'string' || !value.snapshotId) return;
+  const count = value[countKey];
+  if (typeof count !== 'number' || !Number.isSafeInteger(count) || count < 1) return;
+  return { snapshotId: value.snapshotId, count, query: typeof value.query === 'string' ? value.query : undefined,
+    mode: typeof value.mode === 'string' ? value.mode : undefined, coverage: value.coverage,
+    evidenceStatus: typeof value.evidenceStatus === 'string' ? value.evidenceStatus : undefined };
+}
+
+function collectReferences(entries: readonly unknown[],
+  report: (snapshotId: string, turn: number, citationId: string | null, source?: SourceView) => void) {
   const toolCalls = new Map<string, ToolCall>();
   let turn: number | undefined;
   for (const entry of entries) {
@@ -132,7 +153,7 @@ export function citationReferences(entries: readonly unknown[]) {
       case 'user/message':
         if (isRecord(data.source) && data.source.kind === 'tbea-knowledge-prefetch') {
           const view = toolResult(data.source.view, 'tbea-view/v1');
-          addReference(references, view?.snapshotId, turn, null);
+          if (view && turn !== undefined) report(view.snapshotId, turn, null);
         }
         break;
       case 'tool/call':
@@ -152,19 +173,44 @@ export function citationReferences(entries: readonly unknown[]) {
         const text = (!meta || (call.name === detailTool && !citationId)) && Array.isArray(message.content)
           ? message.content.flatMap(part => isRecord(part) && part.type === 'text' && typeof part.text === 'string' ? [part.text] : []).join('\n')
           : undefined;
-        const result = toolResult(parseJson(text), 'tbea-knowledge/v1');
+        const parsedResult = parseJson(text);
+        const result = toolResult(parsedResult, 'tbea-knowledge/v1');
         const snapshotId = meta?.snapshotId ?? result?.snapshotId;
-        if (call.name === searchTool) addReference(references, snapshotId, call.turn, null);
+        if (!snapshotId) break;
+        if (call.name === searchTool) {
+          report(snapshotId, call.turn, null, meta ? visibleToolSource(data.meta, 'count') : result && visibleToolSource(parsedResult, 'hitCount'));
+        }
         else {
           const first: unknown = Array.isArray(result?.citations) ? result.citations[0] : undefined;
           if (!citationId && isRecord(first) && typeof first.citationId === 'string') citationId = first.citationId;
-          if (citationId) addReference(references, snapshotId, call.turn, citationId);
+          if (citationId) report(snapshotId, call.turn, citationId);
         }
         break;
       }
     }
   }
+}
+
+export function citationReferences(entries: readonly unknown[]) {
+  const references: CitationReferences = new Map();
+  collectReferences(entries, (snapshotId, turn, citationId) => addReference(references, snapshotId, turn, citationId));
   return references;
+}
+
+export function supplementalSources(entries: readonly unknown[], turn: number) {
+  let byTurn = supplementalByHistory.get(entries);
+  if (!byTurn) {
+    const indexed = new Map<number, Map<string, SourceView>>();
+    collectReferences(entries, (snapshotId, resultTurn, _citationId, source) => {
+      if (!source) return;
+      const views = indexed.get(resultTurn) ?? new Map<string, SourceView>();
+      views.set(snapshotId, source);
+      indexed.set(resultTurn, views);
+    });
+    supplementalByHistory.set(entries, indexed);
+    byTurn = indexed;
+  }
+  return [...(byTurn.get(turn)?.values() ?? [])];
 }
 
 export function snapshotDocuments(snapshot: unknown): SnapshotDocument[] {

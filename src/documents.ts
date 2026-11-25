@@ -96,8 +96,16 @@ export async function listDocuments(config: ServiceConfig, library: string, sign
 export async function describeDocument(config: ServiceConfig, library: string, id: string, signal: AbortSignal, fetcher?: Fetcher) {
   const result = await platformJson(config, `${actions}DescribeDocument`, { knowledgeBaseId: library, documentId: id }, signal, fetcher);
   const row = isRecord(result.data) ? result.data : result;
-  if ((row.documentId ?? row.id) !== id || (row.knowledgeBaseId ?? row.knowledgebase_id ?? row.knowledge_base_id ?? library) !== library) {
+  const owner = row.knowledgeBaseId ?? row.knowledgebase_id ?? row.knowledge_base_id;
+  if ((row.documentId ?? row.id) !== id || (owner != null && owner !== library)) {
     throw new PlatformError('DOCUMENT_NOT_FOUND', '该文档不在当前知识库中');
   }
-  return documentRecord(row);
+  const detail = documentRecord(row);
+  if (!detail.address || owner == null) {
+    const { records } = await listDocuments(config, library, signal, fetcher, id);
+    const listed = records.get(id);
+    if (owner == null && !listed) throw new PlatformError('DOCUMENT_NOT_FOUND', '该文档不在当前知识库中');
+    detail.address ??= listed?.address;
+  }
+  return detail;
 }

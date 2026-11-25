@@ -39,6 +39,7 @@ export interface RetrievalConfig {
   roundTimeoutMs: number;
   evidenceScoreThreshold?: number;
   diagnostics?: boolean;
+  diagnosticExcerpts?: boolean;
   synonyms?: EvidenceSynonym[];
   semanticReview?: boolean;
   semanticModelOrigins?: string[];
@@ -80,7 +81,6 @@ export interface DocumentPreviewConfig {
   enabled: boolean;
   allowPdfViewer?: boolean;
   office?: string;
-  officeBundled?: boolean;
   converters: Partial<Record<string, string>>;
 }
 

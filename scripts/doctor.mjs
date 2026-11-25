@@ -15,7 +15,7 @@ export async function diagnose(filename, options) {
   const config = await readConfig(filename, options); const base = `http://127.0.0.1:${config.port}`;
   if (previewEnabled(config.documentPreview)) {
     console.log('PDF.js: enabled');
-    console.log(`LibreOffice: ${config.documentPreview?.office ?? 'not configured'}`);
+    console.log(`External Office converter: ${config.documentPreview?.office ?? 'not configured'}`);
   }
   console.log(`Knowledge diagnostics: ${diagnosticFilename(config)}`);
   console.log(`Node: ${process.version}; mode: ${config.mode}; service: ${base}`);
@@ -58,7 +58,7 @@ if (path.resolve(process.argv[1] || '') === fileURLToPath(import.meta.url)) {
       });
       const manifest = JSON.parse(await fs.readFile(path.join(packageRoot, 'package.json'), 'utf8'));
       console.log(`Desktop plugin: ${manifest.version}; ${packageRoot}`);
-      const { filename, options } = desktopConfigLocations(harnessHome, packageRoot);
+      const { filename, options } = desktopConfigLocations(harnessHome);
       await diagnose(filename, options);
     } else {
       if (values['harness-home']) throw new Error('--harness-home 需要 --desktop');

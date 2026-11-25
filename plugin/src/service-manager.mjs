@@ -11,6 +11,7 @@ export class ServiceManager {
     this.config=config; this.identity=configIdentity(config); this.token=Symbol('DSH owner');
     this.demoDirectory=options.demoDirectory || fileURLToPath(new URL('../../dist/demo/',import.meta.url));
     this.pdfAssetsDirectory = options.pdfAssetsDirectory;
+    this.getOffice = options.getOffice;
     this.state={ servicePhase:'starting',serviceMessage:'正在启动公司知识服务…' }; this.closed=false;
   }
   snapshot() {
@@ -44,13 +45,17 @@ export class ServiceManager {
     let details; try { details=await runtime.json(); } catch { throw new Error('知识服务身份响应格式不正确，请关闭原服务后重试'); }
     if(details?.schema!==RUNTIME_PROTOCOL || details?.configIdentity!==this.identity) throw new Error('该端口运行的知识服务配置不同，请重启原服务或为不同配置设置不同端口');
     if(details.owner==='dsh' && details.pid!==process.pid) throw new Error('该端口由另一个 DSH 进程管理，请为独立实例设置不同端口');
+    if (details.owner === 'manual' && this.getOffice?.() && this.config.documentPreview?.enabled
+      && this.config.documentPreview.allowPdfViewer !== false) {
+      throw new Error('独立知识服务占用了当前端口，无法使用匠宝内置 Word/PPT 转换。请关闭独立服务后重试');
+    }
     return true;
   }
   async boot(entry) {
     if(await this.probe()) return;
     if(this.config.service?.autoStart===false) throw new Error('自动启动已关闭，请先运行 Start-Service.ps1');
     let app;
-    try { app=await createKnowledgeServer(this.config,{ managed:true,demoDirectory:this.demoDirectory, pdfAssetsDirectory:this.pdfAssetsDirectory, onPause: () => { entry.paused = true; },
+    try { app=await createKnowledgeServer(this.config,{ managed:true,demoDirectory:this.demoDirectory, pdfAssetsDirectory:this.pdfAssetsDirectory, getOffice:this.getOffice, onPause: () => { entry.paused = true; },
       takeSemanticModel: id => {
         const model = entry.semanticModels.get(id);
         entry.semanticModels.delete(id);

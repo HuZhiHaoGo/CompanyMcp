@@ -16,6 +16,8 @@ import { configIdentity,SERVICE_VERSION,RUNTIME_PROTOCOL } from './runtime.ts';
 import { hasCode, isRecord, previewEnabled } from './contracts.ts';
 import type { Fetcher, ServiceConfig } from './contracts.ts';
 import type { SemanticModel } from './semantic.ts';
+import type { OfficeToPdf } from './office-preview.ts';
+import { diagnosticId } from './diagnostics.ts';
 
 interface ServerOptions {
   managed?: boolean;
@@ -23,6 +25,7 @@ interface ServerOptions {
   pdfAssetsDirectory?: string;
   onPause?: () => void;
   fetcher?: Fetcher;
+  getOffice?: () => OfficeToPdf | undefined;
   takeSemanticModel?: (requestId: string) => SemanticModel | undefined;
 }
 
@@ -53,7 +56,7 @@ function send(res: ServerResponse, status: number, value: unknown, type = 'appli
 
 export async function createKnowledgeServer(config: ServiceConfig, options: ServerOptions = {}) {
   const service = new KnowledgeService(config, { fetcher: options.fetcher }); await service.init();
-  const library = new LibraryBrowser(config, service, options.fetcher);
+  const library = new LibraryBrowser(config, service, options.fetcher, options.getOffice);
   const identity=configIdentity(config); const shutdown=new AbortController(); let closing: Promise<void> | undefined;
   const activeMcp = new Set<Server>();
   const owner = options.managed ? 'dsh' : 'manual';
@@ -108,7 +111,11 @@ export async function createKnowledgeServer(config: ServiceConfig, options: Serv
             const requestId = request.params._meta?.['tbea/semantic-request'];
             const model = request.params.name === 'search_knowledge' && typeof requestId === 'string'
               ? options.takeSemanticModel?.(requestId) : undefined;
-            const result = await service.call(request.params.name, request.params.arguments || {}, AbortSignal.any([extra.signal,controller.signal,shutdown.signal]), manuallySelected, model);
+            const origin = {
+              sessionId: diagnosticId(request.params._meta?.['tbea/session-id']),
+              messageId: diagnosticId(request.params._meta?.['tbea/message-id']),
+            };
+            const result = await service.call(request.params.name, request.params.arguments || {}, AbortSignal.any([extra.signal,controller.signal,shutdown.signal]), manuallySelected, model, origin);
             return { content: [{ type: 'text', text: JSON.stringify(result.model) }], structuredContent: { schema: 'tbea-mcp-result/v1', ...result } };
           } catch (error) { return { isError: true, content: [{ type: 'text', text: JSON.stringify(errorBody(error)) }] }; }
         });
@@ -138,8 +145,11 @@ export async function createKnowledgeServer(config: ServiceConfig, options: Serv
       case '/documents': return send(res, 200, await library.documents(args.get('libraryId'), signal));
       case '/open': return send(res, 200, await library.open(args.get('libraryId'), args.get('documentId'), signal));
       case '/preview-progress': return send(res, 200, await library.previewProgress(args.get('libraryId'), args.get('documentId'), signal));
-      case '/preview-result': return send(res, 200, await library.previewResult(args.get('previewId'), args.get('status'), args.get('elapsedMs'), signal));
+      case '/preview-result': return send(res, 200, await library.previewResult(args.get('previewId'), args.get('status'), args.get('elapsedMs'), signal, args.get('parseMs'), {
+        pdfAssetMs: args.get('pdfAssetMs'), pdfLoadMs: args.get('pdfLoadMs'), pdfRenderMs: args.get('pdfRenderMs'),
+      }));
       case '/pdf-range': return send(res, 200, await library.pdfRange(args.get('previewId'), args.get('begin'), args.get('end'), signal), 'application/octet-stream');
+      case '/sheet-range': return send(res, 200, await library.sheetRange(args.get('previewId'), args.get('begin'), args.get('end'), signal), 'application/octet-stream');
       default: return send(res, 404, { error: '未找到接口' });
     }
   }

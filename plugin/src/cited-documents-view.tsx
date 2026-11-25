@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
-import type { MouseEvent } from 'react';
+import type { MouseEvent, ReactNode } from 'react';
 import { FileText, LoaderCircle } from 'lucide-react';
 import { DocumentReader } from './library-browser.tsx';
 import type { LibraryBridge } from './library-browser.tsx';
@@ -17,11 +17,13 @@ interface CitedDocumentsProps {
 
 type PreviewState = { document?: Awaited<ReturnType<typeof resolveAnswerCitation>>; error?: string };
 
-export function CitationLinks({ binding, bridge }: { binding?: CitationSessionBinding; bridge: CitationBridge }) {
+export function CitationLinks({ binding, bridge, renderEvidence }: { binding?: CitationSessionBinding; bridge: CitationBridge;
+  renderEvidence: (document: NonNullable<PreviewState['document']>) => ReactNode }) {
   const marker = useRef<HTMLSpanElement>(null);
   const dialog = useRef<HTMLDialogElement>(null);
   const request = useRef<AbortController>();
   const [preview, setPreview] = useState<PreviewState>();
+  const [showOriginal, setShowOriginal] = useState(false);
   const open = preview !== undefined;
   useEffect(() => {
     if (open && dialog.current && !dialog.current.open) dialog.current.showModal();
@@ -38,7 +40,7 @@ export function CitationLinks({ binding, bridge }: { binding?: CitationSessionBi
       // Harness renders a settled local Markdown link as a button with the decoded destination in title.
       const target = event.target.closest('button[title],a[href]');
       const id = target?.getAttribute(target.tagName === 'BUTTON' ? 'title' : 'href');
-      const row = target?.closest('[data-chat-turn][data-chat-flow-kind="assistant"],[data-chat-turn][data-chat-flow-kind="turn-tail"]');
+      const row = target?.closest('[data-chat-turn]:is([data-chat-flow-kind="assistant-step"],[data-chat-flow-kind="assistant"],[data-chat-flow-kind="turn-tail"])');
       if (!id || !knowledgeCitationId.test(id) || !row || row.closest(scopeSelector) !== scope) return;
       const turn = Number(row.getAttribute('data-chat-turn'));
       if (!Number.isSafeInteger(turn) || turn < 0) return;
@@ -47,6 +49,7 @@ export function CitationLinks({ binding, bridge }: { binding?: CitationSessionBi
       request.current?.abort();
       const controller = new AbortController();
       request.current = controller;
+      setShowOriginal(false);
       setPreview({});
       const missing = '对应轮次没有可打开的知识库引用。';
       void resolveAnswerCitation(eventSource.getSnapshot().entries, turn, id,
@@ -67,12 +70,23 @@ export function CitationLinks({ binding, bridge }: { binding?: CitationSessionBi
   const document = preview?.document;
   return <>
     <span hidden ref={marker} />
-    {open && <dialog ref={dialog} className="tbea-citation-dialog" aria-label="知识库引用原文"
+    {open && <dialog ref={dialog} className="tbea-citation-dialog" aria-label="知识库引用"
       onClose={() => { request.current?.abort(); setPreview(undefined); }}>
       <div className="tbea-library">
-        {document ? <DocumentReader bridge={bridge} libraryId={document.knowledgeBaseId}
-          documentInfo={{ id: document.documentId, name: document.documentName }} requestPreview
-          backLabel="关闭引用预览" close={close} />
+        {document ? <>
+          <header className="tbea-citation-dialog-header">
+            {!showOriginal && <h2>{document.documentName}</h2>}
+            {!showOriginal && document.documentId && <button type="button" className="tbea-library-button" onClick={() => setShowOriginal(true)}>
+              查看原文
+            </button>}
+            <button type="button" className="tbea-library-button" onClick={close}>关闭引用</button>
+          </header>
+          {showOriginal ? <DocumentReader bridge={bridge} libraryId={document.knowledgeBaseId}
+            documentInfo={{ id: document.documentId, name: document.documentName }} requestPreview
+            backLabel="返回命中切片" close={() => setShowOriginal(false)} /> : <div className="tbea-citation-evidence">
+            {renderEvidence(document)}
+          </div>}
+        </>
           : <div className="tbea-library-state" role={preview?.error ? 'alert' : 'status'}>
             {preview?.error ?? '正在核对引用…'} <button type="button" className="tbea-library-button" onClick={close}>关闭</button>
           </div>}

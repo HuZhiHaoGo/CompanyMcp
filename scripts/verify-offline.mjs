@@ -4,11 +4,10 @@ import os from 'node:os';
 import { execFile, spawn } from 'node:child_process';
 import { promisify } from 'node:util';
 import assert from 'node:assert/strict';
-import { pathToFileURL } from 'node:url';
-import { withBundledOffice } from '../src/document-renderer.ts';
+import { SERVICE_VERSION } from '../src/runtime.ts';
 import { DESKTOP_CONFIG_TEMPLATE, DESKTOP_DEPLOYMENT_CONFIG } from '../src/desktop-config.ts';
 
-const archive = path.resolve(import.meta.dirname, '..', 'offline/with-libreoffice/dsh-mcp-tbea-knowledge-win-x64.zip');
+const archive = path.resolve(import.meta.dirname, '..', 'offline', SERVICE_VERSION, 'dsh-mcp-tbea-knowledge-win-x64.zip');
 const tar = path.join(process.env.SystemRoot || 'C:/Windows', 'System32', 'tar.exe');
 const run = promisify(execFile);
 const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'tbea-offline-'));
@@ -16,9 +15,14 @@ let child;
 try {
   await run(tar, ['-xf', archive, '-C', directory], { windowsHide: true });
   const root = path.join(directory, 'dsh-mcp-tbea-knowledge');
-  await assert.rejects(fs.stat(path.join(root, 'tools', 'poppler')), { code: 'ENOENT' });
-  await assert.rejects(fs.stat(path.join(root, 'plugin', 'tools', 'poppler')), { code: 'ENOENT' });
+  const entries = await fs.readdir(root, { recursive: true });
+  assert.ok(entries.every(entry => !/(?:^|[\\/])(?:libreoffice(?:\.md)?|poppler|soffice\.(?:bin|exe|com)|pdfinfo\.exe|pdftoppm\.exe|desktop-deployment\.json.*|local\.json)$/i.test(entry)));
+  const sizes = await Promise.all(entries.map(entry => fs.stat(path.join(root, entry))));
+  console.log('ZIP bytes:', (await fs.stat(archive)).size, 'Extracted bytes:', sizes.filter(entry => entry.isFile()).reduce((sum, entry) => sum + entry.size, 0));
   const config = JSON.parse(await fs.readFile(path.join(root, 'config/example.json'), 'utf8'));
+  assert.equal(config.mode, 'mock');
+  for (const key of ['accessKey', 'secretKey', 'projectId', 'assetApiKey']) assert.equal(config.platform[key], '');
+  assert.equal(config.serviceToken, '');
   config.port = 17865; config.serviceToken = 'o'.repeat(64); config.dataDirectory = path.join(directory, 'data');
   config.documentPreview.enabled = true;
   config.documentPreview.allowPdfViewer = true;
@@ -57,6 +61,8 @@ try {
   assert.deepEqual(template, JSON.parse(await fs.readFile(path.join(root, DESKTOP_CONFIG_TEMPLATE), 'utf8')));
   assert.equal(template.documentPreview.enabled, true);
   assert.equal(template.documentPreview.allowPdfViewer, true);
+  assert.equal(template.retrieval.diagnostics, true);
+  assert.equal(template.retrieval.diagnosticExcerpts, true);
   template.port = config.port;
   template.platform.projectId = 'offline-template-test';
   await fs.writeFile(pluginTemplate, JSON.stringify(template));
@@ -75,11 +81,6 @@ try {
   await fs.mkdir(path.dirname(entry), { recursive: true });
   await fs.symlink(installed, entry, 'junction');
   assert.doesNotMatch(await fs.readFile(path.join(installed, 'cordis.patch.yml'), 'utf8'), /configFile|projectRoot/);
-  const officeProfile = pathToFileURL(path.join(directory, 'office-version-profile')).href;
-  const { stdout: officeVersion } = await withBundledOffice(path.join(installed, 'tools/libreoffice/program/soffice.com'), directory, executable =>
-    run(executable, [`-env:UserInstallation=${officeProfile}`, '--version'], { windowsHide: true, timeout: 30000 }));
-  assert.match(officeVersion, /LibreOffice/u);
-  console.log(officeVersion.trim());
   const probe = path.join(directory, 'host-probe.mjs');
   await fs.writeFile(probe, `import { pathToFileURL } from 'node:url';
 import assert from 'node:assert/strict';
@@ -110,13 +111,16 @@ try {
   const worker = await route.fetch(new Request('http://localhost' + route.path + '?asset=pdf.worker.mjs'));
   assert.match(worker.headers.get('content-type'), /javascript/);
   assert.ok((await worker.arrayBuffer()).byteLength > 1000);
+  const spreadsheetWorker = await route.fetch(new Request('http://localhost' + route.path + '?asset=sheet.worker.mjs'));
+  assert.match(spreadsheetWorker.headers.get('content-type'), /javascript/);
+  assert.ok((await spreadsheetWorker.arrayBuffer()).byteLength > 1000);
   const demo = await fetch('http://127.0.0.1:17865/demo');
   assert.equal(demo.status, 200);
   const { stdout } = await promisify(execFile)(process.execPath, [process.argv[3], '--desktop'], { windowsHide: true });
   assert.ok(stdout.includes('Runtime identity OK'));
   assert.ok(stdout.includes('MCP handshake OK'));
   assert.ok(stdout.includes('profiles\\\\.generations\\\\live'));
-  assert.ok(stdout.includes('LibreOffice: ') && stdout.includes('tools\\\\libreoffice\\\\program\\\\soffice.com'));
+  assert.ok(stdout.includes('External Office converter: not configured'));
   console.log('Installed Host, bundled demo, MCP, library preview and Desktop diagnostics OK.');
 } finally { for (const effect of effects.reverse()) await effect(); }
 `);
@@ -129,6 +133,8 @@ try {
   assert.equal(desktopConfig.dataDirectory, undefined);
   assert.equal(desktopConfig.documentPreview.enabled, true);
   assert.equal(desktopConfig.documentPreview.allowPdfViewer, true);
+  assert.equal(desktopConfig.retrieval.diagnostics, true);
+  assert.equal(desktopConfig.retrieval.diagnosticExcerpts, true);
   const diagnostics = await fs.readFile(path.join(harnessHome, 'logs/dsh-mcp-tbea-knowledge.jsonl'), 'utf8');
   assert.match(diagnostics, /tbea-preview-prepare/);
   assert.match(diagnostics, /tbea-preview-first-page/);

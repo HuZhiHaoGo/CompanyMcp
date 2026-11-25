@@ -19,7 +19,7 @@ function fixture(libraries, fetcher, retrieval) {
     platform: { projectId: 'test', accessKey: 'test', secretKey: 'test', searchPath: PLATFORM_SEARCH_PATH,
       chunkPath: PLATFORM_CHUNK_PATH, rerankModelName: 'bce-reranker-base-v1', rankScoreThreshold: 0.4 },
     limits: { top: 10, maxEvidenceChunks: 5, maxTextCharacters: 3000, maxQueryCharacters: 1024 },
-    retrieval,
+    retrieval: { diagnostics: false, ...retrieval },
   };
   const snapshots = new Map();
   const service = new KnowledgeService(config, { fetcher: (url, request) => {
@@ -62,6 +62,33 @@ test('越南别名归并、装置组成和差旅城市档次各自保留有依�
   assert.equal(travel.model.evidenceStatus, 'partial');
   assert.deepEqual(travel.model.citations.map(c => c.chunkId), ['staff-band', 'city-band']);
   assert.ok(travel.model.citations.every(c => c.support === 'related'));
+});
+
+test('长沙差旅先补查国内住宿表，保留分切片的依据并排除境外条款', async () => {
+  const query = '中干出差长沙的补贴制度是怎么样的？';
+  const title = '费用报销及备用金管理制度（测试）.docx';
+  const domestic = '员工国内出差按照每日50元标准发放差补。';
+  const overseas = '境外及港澳台出差人员差旅费住宿标准、伙食补助和交通补贴按地区定额发放。';
+  const special = '售后服务人员国内出差可按每日80元的标准进行住宿补贴。';
+  const schedule = '国内住宿费报销标准\n\n| 地区 | 档次 | 高管 | 中层/科员 |\n| --- | --- | --- | --- |\n| 省会城市、直辖市 | 二类 | 420 | 310 |';
+  const queries = [];
+  const { service } = fixture(['policy'], (_action, { query: sent }) => {
+    queries.push(sent);
+    if (sent === query) return response(chunk('policy', 'allowance', domestic, 0.7, { document_name: title }),
+      chunk('policy', 'foreign', overseas, 0.97, { document_name: title }));
+    return response(chunk('policy', 'schedule', schedule, 0.77, { document_name: title }),
+      chunk('policy', 'foreign', overseas, 0.97, { document_name: title }),
+      chunk('policy', 'special', special, 0.88, { document_name: title }));
+  });
+  const first = await service.search({ query }, undefined, true, async ({ candidates }) => JSON.stringify({ needsClarification: true,
+    decisions: candidates.map(c => ({ id: c.id, kind: 'unrelated' })) }));
+  assert.deepEqual(queries, [query, '长沙 湖南 省会 差旅 住宿标准 中层']);
+  assert.equal(first.model.evidenceStatus, 'partial');
+  assert.equal(first.model.clarification, undefined);
+  assert.deepEqual(first.model.citations.map(c => [c.chunkId, c.support]), [['schedule', 'related'], ['allowance', 'related']]);
+  const broad = await service.search({ query: '差旅费 住宿 伙食 交通补贴标准' });
+  assert.deepEqual(broad.model.citations.map(c => c.chunkId), ['schedule']);
+  assert.equal(broad.model.evidenceStatus, 'partial');
 });
 
 test('无别名的新制度库支持员工口语，引用正文可复核并排除访客办理', async () => {
@@ -155,7 +182,7 @@ test('明确证据走原路径，语义超时或取消无法产生推测证据',
   const direct = await service.search({ query: '未创建配置型材料件，我该怎么办？' }, undefined, false, async () => { calls++; });
   assert.equal(direct.model.hitCount, 1);
   assert.equal(calls, 0);
-  service.config.retrieval = { libraryTimeoutMs: 35, roundTimeoutMs: 60 };
+  Object.assign(service.config.retrieval, { libraryTimeoutMs: 35, roundTimeoutMs: 60 });
   const timeout = await service.search({ query: '工牌丢了怎么补' }, undefined, false, async (_input, signal) => {
     calls++;
     await sleep(5000, undefined, { signal });
@@ -174,11 +201,14 @@ test('现场 PLM 误召回回归，高分电力 PDF 被排除，直接证据先�
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'tbea-diagnostics-test-'));
   t.after(() => fs.rm(directory, { recursive: true, force: true }));
   const { service } = fixture(['mixed'], () => response(
-    chunk('mixed', 'accident', '配置足够的继电保护备品备件，对书面说明材料和结构配置文件进行确认。', 0.99, { document_name: '防止电力生产事故要求.pdf' }),
+    chunk('mixed', 'accident', '配置足够的继电保护备品备件，对书面说明材料和结构配置文件进行确认。\nhttps://ai.tbea.com/file?X-Amz-Signature=fixture-private\nsecret_key: fixture-credential', 0.99, { document_name: '防止电力生产事故要求.pdf' }),
     chunk('mixed', 'unreleased', '配置型材料件处于正在工作，未发布，请提交材料件审签升级请求。', 0.93),
     chunk('mixed', 'missing', '未查找到配置型原材料，由 PLM 管理员处理。', 0.92),
     chunk('mixed', 'create', '未创建配置型材料件。操作为创建配置型材料件，填写参数后发布。', 0.68, { document_name: '019_未创建配置型材料件.docx' }),
-  ), { perLibraryTop: 4, diagnostics: true });
+    chunk('other', 'foreign', '未授权的其他库切片。', 0.99),
+    chunk('mixed', 'limit', '超出每库取数限制。', 0.91),
+  ), { perLibraryTop: 4 });
+  delete service.config.retrieval.diagnostics;
   service.config.diagnosticsDirectory = directory;
   const primary = await service.search({ query: '未创建配置型材料件，我该怎么办？' });
   assert.deepEqual(primary.model.citations.map(item => item.chunkId), ['create', 'unreleased', 'missing']);
@@ -186,10 +216,53 @@ test('现场 PLM 误召回回归，高分电力 PDF 被排除，直接证据先�
   assert.equal(trace.searchId, primary.view.snapshotId);
   assert.equal(trace.candidates.find(item => item.chunkId === 'accident').reason, 'no-topic');
   assert.equal(trace.candidates.find(item => item.chunkId === 'accident').score, 0.99);
-  assert.doesNotMatch(JSON.stringify(trace), /继电保护备品|书面说明材料|填写参数|凭证/);
+  const rejected = trace.candidates.find(item => item.chunkId === 'accident');
+  assert.equal(rejected.documentName, '防止电力生产事故要求.pdf');
+  assert.match(rejected.excerpt, /继电保护备品/);
+  assert.match(rejected.excerpt, /已隐去链接/);
+  assert.deepEqual(trace.libraries.map(({ libraryId, returned, scoped, kept }) => ({ libraryId, returned, scoped, kept })), [
+    { libraryId: 'mixed', returned: 6, scoped: 5, kept: 4 },
+  ]);
+  assert.equal(trace.libraries[0].hits.find(item => item.chunkId === 'foreign').reason, 'outside-scope');
+  assert.equal(trace.libraries[0].hits.find(item => item.chunkId === 'foreign').documentName, undefined);
+  assert.equal(trace.libraries[0].hits.find(item => item.chunkId === 'limit').reason, 'per-library-limit');
+  assert.deepEqual(trace.projection.map(item => item.chunkId), primary.model.citations.map(item => item.chunkId));
+  assert.equal(trace.sent, 3);
+  assert.doesNotMatch(JSON.stringify(trace), /fixture-private|fixture-credential|X-Amz-Signature|未授权的其他库|我该怎么办/);
   assert.equal((await service.snapshot(primary.view.snapshotId)).citations.length, 3);
   const electrical = await service.search({ query: '继电保护装置的备品备件要求' });
   assert.equal(electrical.model.citations[0]?.chunkId, 'accident');
+  const filename = path.join(directory, 'dsh-mcp-tbea-knowledge.jsonl');
+  service.config.retrieval.diagnosticExcerpts = false;
+  await service.search({ query: '继电保护装置的备品备件要求' });
+  const summary = JSON.parse((await fs.readFile(filename, 'utf8')).trim().split('\n').at(-1));
+  assert.equal(summary.candidates.find(item => item.chunkId === 'accident').documentName, '防止电力生产事故要求.pdf');
+  assert.ok(summary.candidates.every(item => item.excerpt === undefined));
+  service.config.retrieval.diagnostics = false;
+  const previous = await fs.readFile(filename, 'utf8');
+  await service.search({ query: '继电保护装置的备品备件要求' });
+  assert.equal(await fs.readFile(filename, 'utf8'), previous);
+});
+
+test('诊断区分平台检索失败及选中后因模型正文预算被过滤的切片', async t => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'tbea-diagnostics-projection-'));
+  t.after(() => fs.rm(directory, { recursive: true, force: true }));
+  let fail = false;
+  const { service } = fixture(['library'], () => fail ? new Response(null, { status: 503 }) : response(
+    chunk('library', 'evidence', '差旅费报销流程：提交费用发票并审批。', 0.86),
+  ), { diagnostics: true });
+  service.config.diagnosticsDirectory = directory;
+  service.config.limits.maxTextCharacters = 1;
+  const projected = await service.search({ query: '差旅费报销流程是什么？' });
+  assert.equal(projected.view.count, 1);
+  assert.equal(projected.model.hitCount, 0);
+  fail = true;
+  await assert.rejects(service.search({ query: '差旅费报销流程是什么？' }), { code: 'PLATFORM_HTTP_503' });
+  const [success, failure] = (await fs.readFile(path.join(directory, 'dsh-mcp-tbea-knowledge.jsonl'), 'utf8')).trim().split('\n').map(JSON.parse);
+  assert.equal(success.projection[0].reason, 'rejected-after-truncation');
+  assert.equal(success.projection[0].chunkId, 'evidence');
+  assert.equal(failure.libraries[0].errorCode, 'PLATFORM_HTTP_503');
+  assert.equal(failure.errorCode, 'PLATFORM_HTTP_503');
 });
 
 test('新授权制度库按主题优先查询，口语不足时补检，发票入账与差旅报账分开', async () => {

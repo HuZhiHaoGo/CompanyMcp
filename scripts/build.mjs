@@ -17,6 +17,10 @@ await fs.mkdir(pdfAssets, { recursive: true });
 await fs.copyFile(path.join(pdfjs, 'build/pdf.min.mjs'), path.join(pdfAssets, 'pdf.mjs'));
 await fs.copyFile(path.join(pdfjs, 'build/pdf.worker.min.mjs'), path.join(pdfAssets, 'pdf.worker.mjs'));
 await fs.copyFile(path.join(pdfjs, 'LICENSE'), path.join(pdfAssets, 'LICENSE'));
+await build({ entryPoints: [path.join(root, 'plugin/src/sheet-worker-entry.ts')], bundle: true,
+  outfile: path.join(pdfAssets, 'sheet.worker.mjs'), platform: 'browser', target: 'chrome120', format: 'esm', minify: true,
+  legalComments: 'eof',
+});
 for (const resource of ['cmaps', 'standard_fonts', 'wasm']) {
   await fs.cp(path.join(pdfjs, resource), path.join(pdfAssets, resource), { recursive: true });
 }

@@ -17,6 +17,38 @@ export function diagnosticErrorCode(error: unknown) {
   return 'UNKNOWN_ERROR';
 }
 
+export function diagnosticId(value: unknown) {
+  const id = typeof value === 'number' && Number.isSafeInteger(value) ? String(value) : value;
+  return typeof id === 'string' && /^[\w.:-]{1,128}$/u.test(id) ? id : undefined;
+}
+
+export function diagnosticCredentials(config: ServiceConfig) {
+  const { platform, serviceToken } = config;
+  return [platform.accessKey, platform.secretKey, platform.assetApiKey, serviceToken];
+}
+
+export function diagnosticText(value: string, limit: number, credentials: readonly (string | undefined)[]) {
+  let text = value.slice(0, limit + 8192).replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F\u202A-\u202E\u2066-\u2069]/gu, '');
+  for (const credential of credentials) {
+    if (credential) text = text.replaceAll(credential, '[已隐去凭据]');
+  }
+  return text
+    .replace(/(?:[a-z][a-z0-9+.-]*:\/\/|(?<![\p{L}\p{N}:])\/\/|\bdata:)[^\s<>"'|)]+/giu, '[已隐去链接]')
+    .replace(/\b(?:www\.)[^\s<>"'|)]+/giu, '[已隐去链接]')
+    .replace(/\b(?:bearer|basic)\s+[A-Za-z0-9._~+\/=:-]+/giu, '[已隐去凭据]')
+    .replace(/(?:x-amz-[\w-]+|(?:access|secret|api|asset)[-_ ]?key|service[-_ ]?token|\b(?:ak|sk|password|signature|token|authorization)\b|凭据|密钥|口令)\s*["']?\s*[:=：]\s*(?:"[^"\r\n]*"|'[^'\r\n]*'|[^\s,;|)<>]+)(?=\s|$|[,;|)<>])/giu, '[已隐去凭据]')
+    .trim().slice(0, limit);
+}
+
+export type PreviewTiming = (phase: string, started: number) => void;
+
+export async function timePreview<T>(timing: PreviewTiming | undefined, phase: string, work: () => T | Promise<T>): Promise<T> {
+  if (!timing) return work();
+  const started = performance.now();
+  try { return await work(); }
+  finally { timing(phase, started); }
+}
+
 export function appendDiagnostic(config: ServiceConfig, event: Record<string, unknown>): Promise<void> {
   const filename = diagnosticFilename(config);
   const line = JSON.stringify({ time: new Date().toISOString(), ...event }) + '\n';

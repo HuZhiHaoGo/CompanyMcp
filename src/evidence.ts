@@ -28,17 +28,31 @@ const amount = /上限|限额|标准|最多|封顶|多少/u;
 const process = /流程|步骤|申请|审批|凭证|发票|办理|提交|填写/u;
 const vendor = /供应商|采购|应付账款/u;
 const accounts = /入账|账务|记账|会计凭证/u;
-const cadre = /(?<!非)(?:中干|中层干部|中层管理(?:人员|干部))/u;
-const allowances = /补贴|补助|津贴/u;
+const cadre = /(?<!非)(?:中干|中层干部|中层管理(?:人员|干部)|中层(?=$|[\s/、，,|及与和]))/u;
+const allowances = /补贴|补助|津贴|差补/u;
 const cityBand = /城市(?:类别|分类|档次)|省会(?:城市)?|[一二三四]类城市/u;
 const travelAmount = /(?:\d+(?:\.\d+)?|[一二三四五六七八九十百千零]+)\s*元|[¥￥]\s*\d/u;
+const domesticTravel = /国内.{0,12}(?:出差|差旅|住宿)|(?:差旅|出差).{0,8}国内/u;
+const overseasTravel = /(?:境外|海外|国外|港澳台|驻外).{0,18}(?:出差|差旅|补助|住宿)|(?:出差|差旅).{0,8}(?:境外|海外|国外|港澳台)/u;
+const specialTravelStaff = /售后|驻外|外勤|司机|高管|实习/u;
+const domesticEmployee = /(?:员工|出差人员)(?:因公)?国内(?:出差|差旅)/u;
+const lodgingSchedule = /(?:住宿|酒店).{0,12}(?:标准|限额|上限)/u;
+const cityScheduleRow = /(?:长沙|省会城市)[^|]{0,140}\|\s*(?:[一二三四]类(?:地区|城市)?\s*\|\s*)?\d+(?:\.\d+)?\s*\|\s*\d+(?:\.\d+)?/u;
 const temperatureDevice = /光纤(?:测温|温度测量)/u;
 const composition = /由[^。！？\n]{1,220}(?:组成|构成)|(?:组成部分|基本构成|结构组成|组成包括)\s*[:：包括为有]/u;
 
 interface BusinessIntent {
   canonical: string;
   libraryHint: RegExp;
+  supplement?: string;
+  retainRelated?: boolean;
   verify(body: string, title: string): 'direct' | 'related' | undefined;
+}
+
+function domesticEmployeeRate(row: string, category: RegExp) {
+  const subject = domesticEmployee.exec(row);
+  return Boolean(subject && !specialTravelStaff.test(row.slice(0, subject.index)) && category.test(row)
+    && travelAmount.test(row) && !overseasTravel.test(row));
 }
 
 function businessIntent(query: string): BusinessIntent | undefined {
@@ -62,19 +76,38 @@ function businessIntent(query: string): BusinessIntent | undefined {
         return temperatureDevice.test(source) && product.test(source) && composition.test(body) ? 'direct' : undefined;
       } };
   }
-  if (travelObject.test(query) && cadre.test(query) && /长沙/u.test(query) && allowances.test(query)) {
-    const category = /伙食|误餐/u.test(query) ? /伙食|误餐|餐费/u
-      : /交通/u.test(query) ? /市内交通|交通补贴|交通补助/u
-        : lodging.test(query) ? lodging : /伙食|餐费|住宿|市内交通|交通补贴|交通补助|差旅补[贴助]/u;
+  if (travelObject.test(query) && cadre.test(query) && /长沙/u.test(query)
+    && (allowances.test(query) || (lodging.test(query) && amount.test(query)))) {
+    const specific = /伙食|误餐/u.test(query) ? /伙食|误餐|餐费/u
+      : /交通/u.test(query) ? /市内交通|交通补贴|交通补助/u : lodging.test(query) ? lodging : undefined;
+    const category = specific ?? /伙食|餐费|住宿|市内交通|交通补贴|交通补助|差旅补[贴助]|差补/u;
     return { canonical: '中层干部 长沙 差旅费 伙食补助 市内交通费 城市类别', libraryHint: /差旅|出差|费用报销/u,
+      supplement: specific && specific !== lodging ? `长沙 国内差旅费 ${specific.test('伙食') ? '伙食补助' : '市内交通费'} 标准`
+        : '长沙 湖南 省会 差旅 住宿标准 中层',
+      retainRelated: true,
       verify: (body, title) => {
-        if (!travelObject.test(`${title}\n${body}`)) return;
+        const source = `${title}\n${body}`;
+        if (!travelObject.test(source) || (overseasTravel.test(source) && !domesticTravel.test(source))) return;
         const rows = body.split(/[。；;\n]/u);
         if (rows.some(row => ((row.includes('长沙') || title.includes('长沙')) && (cadre.test(row) || cadre.test(title)))
           && category.test(row) && travelAmount.test(row))) return 'direct';
         const hasPolicy = rows.some(row => (cadre.test(row) || cadre.test(title)) && category.test(row));
         const hasCityBand = rows.some(row => row.includes('长沙') && cityBand.test(row));
-        if (hasPolicy || hasCityBand) return 'related';
+        const hasSchedule = category.test('住宿') && lodgingSchedule.test(source) && cadre.test(body) && cityScheduleRow.test(body);
+        const hasDomesticRate = rows.some(row => domesticEmployeeRate(row, category));
+        if (hasPolicy || hasCityBand || hasSchedule || hasDomesticRate) return 'related';
+      } };
+  }
+  if (travelObject.test(query) && amount.test(query) && allowances.test(query) && !overseasTravel.test(query)
+    && !namedRegions(query).some(region => region !== regions.get('CN'))) {
+    const multipleFees = [lodging, /伙食|误餐|餐费/u, /交通/u].filter(fee => fee.test(query)).length > 1;
+    return { canonical: '国内差旅费用标准', libraryHint: /差旅|出差|费用报销/u,
+      verify: (body, title) => {
+        const source = `${title}\n${body}`;
+        if (!domesticTravel.test(source)) return;
+        const hasSchedule = lodgingSchedule.test(source) && cityScheduleRow.test(body);
+        const hasRate = body.split(/[。；;\n]/u).some(row => domesticEmployeeRate(row, allowances));
+        return hasSchedule || hasRate ? (multipleFees ? 'related' : 'direct') : undefined;
       } };
   }
   if (travelObject.test(query) && expense.test(query)) {
@@ -300,6 +333,7 @@ export function checkEvidence(query: string, synonyms: readonly EvidenceSynonym[
   const intents = topics.flatMap(topic => topic.intent ? [topic.intent] : []);
   const alternativeTerms = [...new Set([...intents.map(intent => intent.canonical), ...active.map(rule => rule.term)]
     .filter(term => !original.includes(normalize(term))))];
+  const focused = topics.length === 1 ? topics[0].intent?.supplement : undefined;
   return {
     matches, evaluate, summarize: (items: readonly EvidenceText[]) => summarizeDecisions(items.map(evaluate)), summarizeDecisions, clarification,
     // Known business anchors also keep a semantic decision from upgrading a different procedure.
@@ -310,6 +344,8 @@ export function checkEvidence(query: string, synonyms: readonly EvidenceSynonym[
         return !intent || intent.verify(body, title) === 'direct';
       });
     },
+    retainsRelated: (decision: EvidenceDecision) => decision.reason === 'related'
+      && decision.topics.some(index => topics[index]?.intent?.retainRelated === true),
     confident: (item: EvidenceText) => {
       const body = compact(item.text);
       const direct = evaluate(item).directTopics;
@@ -321,7 +357,8 @@ export function checkEvidence(query: string, synonyms: readonly EvidenceSynonym[
     },
     semanticQueryTopics: topics.length ? topics.map((topic, index) => ({ index, label: topic.label })) : [{ index: 0, label: '原问题' }],
     diagnosticTopics: topics.map((topic, index) => ({ index, country: topic.region?.[0], standard: topic.standard?.id, intent: topic.intent?.canonical })),
-    supplement: alternativeTerms.length ? [query, ...alternativeTerms].join(' ') : undefined,
+    supplement: focused ? (normalize(focused) === original ? undefined : focused)
+      : alternativeTerms.length ? [query, ...alternativeTerms].join(' ') : undefined,
     libraryPriority: (library: { name: string; description?: string }) => intents.some(intent => intent.libraryHint.test(normalize(library.name + ' ' + (library.description ?? '')))),
   };
 }

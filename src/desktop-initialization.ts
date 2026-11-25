@@ -1,6 +1,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { randomBytes } from 'node:crypto';
+import { setTimeout as delay } from 'node:timers/promises';
 import { parseConfigJson, readConfig, validateConfig } from './config.ts';
 import { hasCode, isRecord } from './contracts.ts';
 import type { desktopConfigLocations } from './desktop-config.ts';
@@ -31,7 +32,15 @@ async function writeConfig(filename: string, config: Record<string, unknown>, re
   try {
     try { await handle.writeFile(JSON.stringify(config, null, 2) + '\n'); }
     finally { await handle.close(); }
-    if (replace) await fs.rename(temporary, filename);
+    if (replace) {
+      for (let attempt = 0; ; attempt++) {
+        try { await fs.rename(temporary, filename); break; }
+        catch (error) {
+          if (process.platform !== 'win32' || attempt === 4 || !['EPERM', 'EBUSY', 'EACCES'].some(code => hasCode(error, code))) throw error;
+          await delay(40 * (attempt + 1));
+        }
+      }
+    }
     // 完整写入后才发布，并由文件系统保证并发启用时只创建一次。
     else await fs.link(temporary, filename);
     return true;

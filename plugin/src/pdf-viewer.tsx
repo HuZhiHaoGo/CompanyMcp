@@ -20,7 +20,7 @@ export function PreviewMeter({ label, elapsedMs, received, total }: { label: str
   </div>;
 }
 
-function assetUrl(base: string, name: string) {
+export function assetUrl(base: string, name: string) {
   const url = new URL(base, document.baseURI);
   url.searchParams.set('asset', name);
   return url.href;
@@ -39,11 +39,19 @@ export function PdfViewer({ bridge, previewId, bytes, assetPath, restart }: {
   const [attempt, setAttempt] = useState(0);
   const [firstPageReady, setFirstPageReady] = useState(false);
   const scrollRoot = useRef<HTMLDivElement>(null);
-  const metric = useRef({ started: performance.now(), sent: false });
+  const metric = useRef<{ started: number; sent: boolean; assetReady?: number; documentReady?: number }>({
+    started: performance.now(), sent: false,
+  });
   const report = useCallback((status: 'ready' | 'password' | 'invalid-pdf' | 'load-failed' | 'render-failed') => {
     if (metric.current.sent) return;
     metric.current.sent = true;
-    void bridge('library-preview-result', { previewId, status, elapsedMs: Math.round(performance.now() - metric.current.started) },
+    const { started, assetReady, documentReady } = metric.current;
+    const elapsedMs = Math.round(performance.now() - started);
+    const assetMs = assetReady === undefined ? elapsedMs : Math.round(assetReady - started);
+    const loadedMs = documentReady === undefined ? elapsedMs : Math.round(documentReady - started);
+    void bridge('library-preview-result', { previewId, status, elapsedMs, pdfAssetMs: assetMs,
+      ...(assetReady !== undefined && { pdfLoadMs: loadedMs - assetMs }),
+      ...(documentReady !== undefined && { pdfRenderMs: elapsedMs - loadedMs }) },
       AbortSignal.timeout(5000)).catch(() => {});
   }, [bridge, previewId]);
   const firstPage = useCallback((error?: string) => {
@@ -74,6 +82,7 @@ export function PdfViewer({ bridge, previewId, bytes, assetPath, restart }: {
     async function loadPdf() {
       const engine: typeof import('pdfjs-dist') = await import(assetUrl(assetPath, 'pdf.mjs'));
       if (controller.signal.aborted) return;
+      metric.current.assetReady = performance.now();
       engine.GlobalWorkerOptions.workerSrc = assetUrl(assetPath, 'pdf.worker.mjs');
       const transport = new engine.PDFDataRangeTransport(bytes, null, true);
       const read = async (begin: number, end: number) => {
@@ -94,6 +103,7 @@ export function PdfViewer({ bridge, previewId, bytes, assetPath, restart }: {
         wasmUrl: `${assetUrl(assetPath, 'wasm')}/`, enableXfa: false, maxImageSize: 32 * 1024 * 1024 });
       const pdf = await loading.promise;
       if (controller.signal.aborted) return;
+      metric.current.documentReady = performance.now();
       if (pdf.numPages < 1 || pdf.numPages > 3000) throw new Error('文档预览支持 1 至 3000 页');
       setDocumentPdf({ pdf, disableAnnotations: engine.AnnotationMode.DISABLE });
     }

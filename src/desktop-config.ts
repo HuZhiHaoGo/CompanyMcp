@@ -4,14 +4,13 @@ const DESKTOP_CONFIG = 'dsh-mcp-tbea-knowledge.json';
 export const DESKTOP_DEPLOYMENT_CONFIG = 'desktop-deployment.json';
 export const DESKTOP_CONFIG_TEMPLATE = 'config/example.json';
 
-export function desktopConfigLocations(harnessHome: string | undefined, packageRoot: string) {
+export function desktopConfigLocations(harnessHome: string | undefined) {
   if (!harnessHome || !path.isAbsolute(harnessHome)) {
     throw new Error('无法定位匠宝 Harness 目录，请检查 DSH_HOME 或指定 Harness 的绝对路径');
   }
   return {
     filename: path.join(harnessHome, DESKTOP_CONFIG),
     options: {
-      bundledOffice: path.join(packageRoot, 'tools', 'libreoffice', 'program', 'soffice.com'),
       defaultDataDirectory: path.join(harnessHome, 'dsh-mcp-tbea-knowledge-data'),
       defaultDiagnosticsDirectory: path.join(harnessHome, 'logs'),
     },

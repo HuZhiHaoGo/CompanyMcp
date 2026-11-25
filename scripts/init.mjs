@@ -30,7 +30,7 @@ export async function initialize(root) {
 }
 
 export async function initializeDesktop(root, { harnessHome, configSource, replaceConfig, prepareDesktopPackage } = {}) {
-  const locations = desktopConfigLocations(commandHarnessHome(harnessHome), path.join(root, 'plugin'));
+  const locations = desktopConfigLocations(commandHarnessHome(harnessHome));
   if (prepareDesktopPackage) {
     if (!configSource) throw new Error('请通过 -ConfigSource 指定管理员准备的 JSON 配置文件');
     const destination = path.join(root, 'plugin', DESKTOP_DEPLOYMENT_CONFIG);

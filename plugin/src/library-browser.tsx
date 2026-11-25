@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { ArrowLeft, BookOpen, FileText, LoaderCircle, RotateCcw, Search } from 'lucide-react';
 import type { LibraryBrowser as LibraryService } from '../../src/library-browser.ts';
@@ -6,6 +6,8 @@ import type { documentRecord } from '../../src/documents.ts';
 import type { previewStatus } from '../../src/document-renderer.ts';
 import { displayPath } from './display-transport.mjs';
 import { PdfViewer, PreviewMeter } from './pdf-viewer.tsx';
+import { officeUnavailable } from '../../src/preview-messages.ts';
+const SpreadsheetViewer = lazy(() => import('./spreadsheet-viewer.tsx').then(module => ({ default: module.SpreadsheetViewer })));
 
 type LibraryRequests = {
   'library-catalog': {
@@ -25,13 +27,15 @@ type LibraryRequests = {
     result: Awaited<ReturnType<LibraryService['previewProgress']>>;
   };
   'library-preview-result': {
-    args: { previewId: string; status: 'ready' | 'password' | 'invalid-pdf' | 'load-failed' | 'render-failed'; elapsedMs: number };
+    args: { previewId: string; status: 'ready' | 'password' | 'invalid-pdf' | 'load-failed' | 'render-failed' | 'invalid-sheet' | 'sheet-too-large' | 'sheet-timeout';
+      elapsedMs: number; parseMs?: number; pdfAssetMs?: number; pdfLoadMs?: number; pdfRenderMs?: number };
     result: Awaited<ReturnType<LibraryService['previewResult']>>;
   };
   'library-pdf-range': {
     args: { previewId: string; begin: number; end: number };
     result: { bytes: Uint8Array<ArrayBuffer> };
   };
+  'library-sheet-range': LibraryRequests['library-pdf-range'];
 };
 
 type LibraryAction = keyof LibraryRequests;
@@ -44,7 +48,7 @@ type ListedDocument = LibraryRequests['library-documents']['result']['documents'
 type DocumentMetadata = NonNullable<ReturnType<typeof documentRecord>['info']>;
 type ReaderDocument = Pick<DocumentMetadata, 'id' | 'name'> & Partial<DocumentMetadata> & { preview?: ReturnType<typeof previewStatus> };
 
-const states = { disabled: '原文预览未启用', 'converter-required': '待配置转换组件', unsupported: '当前格式暂不支持预览' };
+const states = { disabled: '原文预览未启用', 'converter-required': '待配置专用转换组件', 'office-unavailable': '内置 Word/PPT 转换不可用', unsupported: '当前格式暂不支持预览' };
 const statusLabels: Readonly<Record<string, string>> = { available: '可用', enabled: '可用', queuing: '排队中', parsing: '解析中', indexing: '处理中', parseError: '解析失败', error: '处理失败', paused: '已暂停' };
 
 interface RequestState<T> {
@@ -168,9 +172,13 @@ export function DocumentReader({ bridge, libraryId, documentInfo, close, request
     {state.loading && <PreviewMeter key={progress?.phase} label={progress ? progressLabel[progress.phase] : '正在准备原文预览…'}
       elapsedMs={progress?.elapsedMs} received={progress?.received} total={progress?.total} />}
     {state.error && <Failure retry={state.retry}>{state.error}</Failure>}
-    {preview && preview !== 'available' && <div className="tbea-library-state">{states[preview]}。</div>}
+    {preview && preview !== 'available' && <div className="tbea-library-state">{preview === 'office-unavailable' ? officeUnavailable : states[preview]}。</div>}
     {opened && (opened.pdfBytes
       ? <PdfViewer key={opened.previewId} bridge={bridge} previewId={opened.previewId} bytes={opened.pdfBytes} assetPath={pdfAssetPath} restart={state.retry} />
+      : opened.sheetBytes && opened.sheetFormat
+        ? <Suspense fallback={<PreviewMeter label="正在读取工作表…" />}>
+          <SpreadsheetViewer key={opened.previewId} bridge={bridge} previewId={opened.previewId} bytes={opened.sheetBytes} format={opened.sheetFormat} assetPath={pdfAssetPath} restart={state.retry} />
+        </Suspense>
       : opened.html !== undefined && <TextPreview key={opened.previewId} bridge={bridge} previewId={opened.previewId} html={opened.html} />)}
   </article>;
 }

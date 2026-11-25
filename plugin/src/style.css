@@ -246,8 +246,22 @@ body[data-ds-dark-theme] :where(.tbea-sources,.tbea-selection,.tbea-prefetched,.
 .tbea-cited-status { display:inline-block;margin-inline-start:7px;padding:1px 5px;border-radius:5px;background:var(--tbea-lib-active);color:var(--tbea-lib-fg); }
 .tbea-citation-dialog { border:0;padding:0;border-radius:10px;width:min(900px,calc(100vw - 28px));height:min(760px,82dvh);overflow:hidden; }
 .tbea-citation-dialog::backdrop { background:rgba(0,0,0,.45); }
+.tbea-citation-dialog-header { display:flex; align-items:center; flex-wrap:wrap; gap:8px; padding:10px 12px; }
+.tbea-citation-dialog-header h2 { flex:1 1 240px; margin:0; font-size:inherit; overflow-wrap:anywhere; }
+.tbea-citation-evidence { min-height:0; flex:1; overflow:auto; padding:0 12px 12px; }
+.tbea-citation-focused { border-inline-start:3px solid currentColor; }
 @container (max-width: 590px) {
   .tbea-library-layout { grid-template-columns:minmax(0,1fr); }
   .tbea-library-list { border-right:0; }
   .tbea-library-empty,.tbea-library-has-selection .tbea-library-list { display:none; }
 }
+.tbea-sheet { min-width: 0; min-height: 0; display: flex; flex: 1; flex-direction: column; gap: 8px; padding: 0 12px 12px; }
+.tbea-sheet label, .tbea-sheet-rows { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.tbea-sheet select { max-width: 100%; color: inherit; background: var(--tbea-surface, Canvas); font: inherit; }
+.tbea-sheet-scroll { overflow: auto; min-height: 0; max-height: 65vh; border: 1px solid color-mix(in srgb, currentColor 20%, transparent); }
+.tbea-sheet table { border-collapse: separate; border-spacing: 0; font-size: 0.9em; }
+.tbea-sheet th, .tbea-sheet td { border-bottom: 1px solid color-mix(in srgb, currentColor 18%, transparent); border-right: 1px solid color-mix(in srgb, currentColor 18%, transparent); padding: 4px 8px; }
+.tbea-sheet th { background: var(--tbea-surface, Canvas); }
+.tbea-sheet thead th { position: sticky; top: 0; z-index: 1; }
+.tbea-sheet td { min-width: 96px; max-width: 300px; overflow-wrap: anywhere; white-space: pre-wrap; }
+.tbea-sheet-rows button:disabled { opacity: .5; }

@@ -7379,7 +7379,7 @@ var PLATFORM_SEARCH_PATH = "/openapi/v1/knowledgeBase?Action=QueryKnowledge";
 var PLATFORM_LIST_PATH = "/api/ai_apaas/v1/knowledgeBase?Action=DescribeKnowledgeBases";
 var PLATFORM_CHUNK_PATH = "/api/ai_apaas/v1/knowledgeBase?Action=DescribeChunk";
 var LEGACY_SEARCH_PATH = "/api/ai_apaas/v1/knowledgebases/query";
-var RETRIEVAL_DEFAULTS = Object.freeze({ perLibraryTop: 3, libraryTimeoutMs: 8e3, roundTimeoutMs: 3e4 });
+var RETRIEVAL_DEFAULTS = Object.freeze({ perLibraryTop: 3, libraryTimeoutMs: 8e3, roundTimeoutMs: 3e4, diagnostics: true });
 function parseConfigJson(contents) {
   let config2;
   try {
@@ -7431,13 +7431,14 @@ async function validateConfig(config2, filename, options = {}) {
   const overrides = config2.retrieval ?? {};
   if (!isRecord(overrides)) throw new Error("retrieval \u5FC5\u987B\u4E3A\u5BF9\u8C61");
   const retrieval = { ...RETRIEVAL_DEFAULTS, ...overrides };
-  for (const [key, max] of Object.entries({ perLibraryTop: 20, libraryTimeoutMs: 6e4, roundTimeoutMs: 1e5 })) {
+  for (const [key, max] of [["perLibraryTop", 20], ["libraryTimeoutMs", 6e4], ["roundTimeoutMs", 1e5]]) {
     const value = retrieval[key];
     if (!Number.isInteger(value) || value < 1 || value > max) throw new Error(`retrieval.${key} \u5FC5\u987B\u4E3A 1\uFF5E${max} \u7684\u6574\u6570`);
   }
   if (retrieval.libraryTimeoutMs > retrieval.roundTimeoutMs) throw new Error("\u5355\u5E93\u8D85\u65F6\u4E0D\u80FD\u5927\u4E8E\u6574\u8F6E\u68C0\u7D22\u8D85\u65F6");
   const evidenceThreshold = overrides.evidenceScoreThreshold;
   if (overrides.diagnostics !== void 0 && typeof overrides.diagnostics !== "boolean") throw new Error("retrieval.diagnostics \u5FC5\u987B\u4E3A true \u6216 false");
+  if (overrides.diagnosticExcerpts !== void 0 && typeof overrides.diagnosticExcerpts !== "boolean") throw new Error("retrieval.diagnosticExcerpts \u5FC5\u987B\u4E3A true \u6216 false");
   if (overrides.semanticReview !== void 0 && typeof overrides.semanticReview !== "boolean") throw new Error("retrieval.semanticReview \u5FC5\u987B\u4E3A true \u6216 false");
   if (evidenceThreshold !== void 0 && (typeof evidenceThreshold !== "number" || !Number.isFinite(evidenceThreshold) || evidenceThreshold < 0 || evidenceThreshold > 1)) {
     throw new Error("retrieval.evidenceScoreThreshold \u5FC5\u987B\u4E3A 0\uFF5E1 \u7684\u6570\u5B57");
@@ -7455,12 +7456,13 @@ async function validateConfig(config2, filename, options = {}) {
     retrieval: {
       ...retrieval,
       evidenceScoreThreshold: evidenceThreshold,
-      diagnostics: overrides.diagnostics,
+      diagnostics: overrides.diagnostics ?? RETRIEVAL_DEFAULTS.diagnostics,
       synonyms: readSynonyms(overrides.synonyms),
+      diagnosticExcerpts: overrides.diagnosticExcerpts ?? true,
       semanticReview: overrides.semanticReview === false ? false : void 0,
       semanticModelOrigins: readModelOrigins(overrides.semanticModelOrigins)
     },
-    documentPreview: await readDocumentPreview(config2.documentPreview, directoryPath, options),
+    documentPreview: readDocumentPreview(config2.documentPreview, directoryPath),
     service: service && { ...service, autoStart },
     knowledgeDirectory: { mode: directoryMode, refreshSeconds },
     // 未配置的旧版本继续允许模型按需检索。
@@ -7495,9 +7497,8 @@ function readSynonyms(value) {
     return { term: item.term.trim(), aliases: words(item.aliases), context: words(item.context) };
   });
 }
-async function readDocumentPreview(value, directory, { bundledOffice }) {
-  if (value === void 0) return void 0;
-  if (!isRecord(value) || typeof value.enabled !== "boolean") throw new Error("documentPreview.enabled \u5FC5\u987B\u4E3A true \u6216 false");
+function readDocumentPreview(value = {}, directory) {
+  if (!isRecord(value) || value.enabled !== void 0 && typeof value.enabled !== "boolean") throw new Error("documentPreview.enabled \u5FC5\u987B\u4E3A true \u6216 false");
   const { allowPdfViewer } = value;
   if (allowPdfViewer !== void 0 && typeof allowPdfViewer !== "boolean") throw new Error("documentPreview.allowPdfViewer \u5FC5\u987B\u4E3A true \u6216 false");
   function program(input, key) {
@@ -7512,19 +7513,7 @@ async function readDocumentPreview(value, directory, { bundledOffice }) {
     if (!/^[a-z0-9]{2,8}$/.test(format)) throw new Error("\u8F6C\u6362\u7EC4\u4EF6\u952E\u5FC5\u987B\u4E3A\u5C0F\u5199\u6587\u4EF6\u6269\u5C55\u540D\uFF0C\u4F8B\u5982 ofd");
     converters[format] = program(input, `converters.${format}`);
   }
-  let officeProgram = program(office, "office");
-  let officeBundled;
-  if (value.enabled && allowPdfViewer !== false && !officeProgram && process.platform === "win32") {
-    const relative = "tools/libreoffice/program/soffice.com";
-    for (const candidate of bundledOffice ? [bundledOffice] : [path.resolve(directory, "../plugin", relative), path.resolve(directory, "..", relative)]) {
-      if ((await fs.stat(candidate).catch(() => void 0))?.isFile()) {
-        officeProgram = candidate;
-        officeBundled = true;
-        break;
-      }
-    }
-  }
-  return { enabled: value.enabled, allowPdfViewer: allowPdfViewer ?? true, office: officeProgram, officeBundled, converters };
+  return { enabled: value.enabled ?? true, allowPdfViewer: allowPdfViewer ?? true, office: program(office, "office"), converters };
 }
 function readPlatform(raw, mode) {
   function routeFor(key, fallback) {
@@ -7569,14 +7558,13 @@ function readPlatform(raw, mode) {
 // src/desktop-config.ts
 import path2 from "node:path";
 var DESKTOP_CONFIG = "dsh-mcp-tbea-knowledge.json";
-function desktopConfigLocations(harnessHome, packageRoot) {
+function desktopConfigLocations(harnessHome) {
   if (!harnessHome || !path2.isAbsolute(harnessHome)) {
     throw new Error("\u65E0\u6CD5\u5B9A\u4F4D\u5320\u5B9D Harness \u76EE\u5F55\uFF0C\u8BF7\u68C0\u67E5 DSH_HOME \u6216\u6307\u5B9A Harness \u7684\u7EDD\u5BF9\u8DEF\u5F84");
   }
   return {
     filename: path2.join(harnessHome, DESKTOP_CONFIG),
     options: {
-      bundledOffice: path2.join(packageRoot, "tools", "libreoffice", "program", "soffice.com"),
       defaultDataDirectory: path2.join(harnessHome, "dsh-mcp-tbea-knowledge-data"),
       defaultDiagnosticsDirectory: path2.join(harnessHome, "logs")
     }
@@ -7588,6 +7576,11 @@ function commandHarnessHome(override) {
 
 // src/diagnostics.ts
 import path3 from "node:path";
+
+// src/version.ts
+var SERVICE_VERSION = "0.11.16";
+
+// src/diagnostics.ts
 var maxLogBytes = 10 * 1024 * 1024;
 function diagnosticFilename(config2) {
   return path3.join(config2.diagnosticsDirectory ?? path3.join(config2.dataDirectory, "logs"), "dsh-mcp-tbea-knowledge.jsonl");
@@ -7595,7 +7588,6 @@ function diagnosticFilename(config2) {
 
 // src/runtime.ts
 import { createHmac } from "node:crypto";
-var SERVICE_VERSION = "0.11.11";
 var RUNTIME_PROTOCOL = "tbea-runtime/v1";
 function canonical(value) {
   if (Array.isArray(value)) return value.map(canonical);
@@ -19219,7 +19211,7 @@ async function diagnose(filename, options) {
   const base = `http://127.0.0.1:${config2.port}`;
   if (previewEnabled(config2.documentPreview)) {
     console.log("PDF.js: enabled");
-    console.log(`LibreOffice: ${config2.documentPreview?.office ?? "not configured"}`);
+    console.log(`External Office converter: ${config2.documentPreview?.office ?? "not configured"}`);
   }
   console.log(`Knowledge diagnostics: ${diagnosticFilename(config2)}`);
   console.log(`Node: ${process.version}; mode: ${config2.mode}; service: ${base}`);
@@ -19227,7 +19219,9 @@ async function diagnose(filename, options) {
   const health = await fetch(`${base}/health`, { signal: AbortSignal.timeout(5e3) });
   if (!health.ok) throw new Error(`Health check HTTP ${health.status}`);
   const metadata = await health.json();
-  if (metadata.name !== "tbea-knowledge" || metadata.version !== SERVICE_VERSION) throw new Error("Wrong service or old version on configured port. Stop the old service and restart DSH.");
+  if (metadata.name !== "tbea-knowledge" || metadata.version !== SERVICE_VERSION) {
+    throw new Error(`\u7AEF\u53E3\u4E0A\u7684\u77E5\u8BC6\u670D\u52A1\u7248\u672C\u4E3A ${metadata.version ?? "\u672A\u77E5"}\uFF0C\u672C\u5305\u8981\u6C42 ${SERVICE_VERSION}\u3002\u8BF7\u505C\u6B62\u65E7\u670D\u52A1\u5E76\u91CD\u65B0\u6253\u5F00\u5320\u5B9D\u3002`);
+  }
   const runtime = await fetch(base + "/runtime", { headers: { Authorization: `Bearer ${config2.serviceToken}` }, signal: AbortSignal.timeout(5e3) });
   if (!runtime.ok) throw new Error(`Runtime authentication HTTP ${runtime.status}`);
   const identity = await runtime.json();
@@ -19266,7 +19260,10 @@ if (path4.resolve(process.argv[1] || "") === fileURLToPath(import.meta.url)) {
       });
       const manifest = JSON.parse(await fs2.readFile(path4.join(packageRoot, "package.json"), "utf8"));
       console.log(`Desktop plugin: ${manifest.version}; ${packageRoot}`);
-      const { filename, options } = desktopConfigLocations(harnessHome, packageRoot);
+      if (manifest.version !== SERVICE_VERSION) {
+        throw new Error(`\u5320\u5B9D desktop \u7684\u751F\u6548\u7248\u672C\u4E3A ${manifest.version ?? "\u672A\u77E5"}\uFF0C\u672C\u5305\u8981\u6C42 ${SERVICE_VERSION}\u3002\u8BF7\u5728\u63D2\u4EF6\u7BA1\u7406\u6838\u5BF9\u5DF2\u5B89\u88C5\u7248\u672C\uFF0C\u4ECE\u6258\u76D8\u5B8C\u5168\u9000\u51FA\u5E76\u91CD\u65B0\u6253\u5F00\u5320\u5B9D\uFF0C\u518D\u8FD0\u884C\u8BCA\u65AD\u3002`);
+      }
+      const { filename, options } = desktopConfigLocations(harnessHome);
       await diagnose(filename, options);
     } else {
       if (values["harness-home"]) throw new Error("--harness-home \u9700\u8981 --desktop");

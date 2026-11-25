@@ -20,7 +20,7 @@ var PLATFORM_SEARCH_PATH = "/openapi/v1/knowledgeBase?Action=QueryKnowledge";
 var PLATFORM_LIST_PATH = "/api/ai_apaas/v1/knowledgeBase?Action=DescribeKnowledgeBases";
 var PLATFORM_CHUNK_PATH = "/api/ai_apaas/v1/knowledgeBase?Action=DescribeChunk";
 var LEGACY_SEARCH_PATH = "/api/ai_apaas/v1/knowledgebases/query";
-var RETRIEVAL_DEFAULTS = Object.freeze({ perLibraryTop: 3, libraryTimeoutMs: 8e3, roundTimeoutMs: 3e4 });
+var RETRIEVAL_DEFAULTS = Object.freeze({ perLibraryTop: 3, libraryTimeoutMs: 8e3, roundTimeoutMs: 3e4, diagnostics: true });
 function parseConfigJson(contents) {
   let config;
   try {
@@ -72,13 +72,14 @@ async function validateConfig(config, filename2, options = {}) {
   const overrides = config.retrieval ?? {};
   if (!isRecord(overrides)) throw new Error("retrieval \u5FC5\u987B\u4E3A\u5BF9\u8C61");
   const retrieval = { ...RETRIEVAL_DEFAULTS, ...overrides };
-  for (const [key, max] of Object.entries({ perLibraryTop: 20, libraryTimeoutMs: 6e4, roundTimeoutMs: 1e5 })) {
+  for (const [key, max] of [["perLibraryTop", 20], ["libraryTimeoutMs", 6e4], ["roundTimeoutMs", 1e5]]) {
     const value = retrieval[key];
     if (!Number.isInteger(value) || value < 1 || value > max) throw new Error(`retrieval.${key} \u5FC5\u987B\u4E3A 1\uFF5E${max} \u7684\u6574\u6570`);
   }
   if (retrieval.libraryTimeoutMs > retrieval.roundTimeoutMs) throw new Error("\u5355\u5E93\u8D85\u65F6\u4E0D\u80FD\u5927\u4E8E\u6574\u8F6E\u68C0\u7D22\u8D85\u65F6");
   const evidenceThreshold = overrides.evidenceScoreThreshold;
   if (overrides.diagnostics !== void 0 && typeof overrides.diagnostics !== "boolean") throw new Error("retrieval.diagnostics \u5FC5\u987B\u4E3A true \u6216 false");
+  if (overrides.diagnosticExcerpts !== void 0 && typeof overrides.diagnosticExcerpts !== "boolean") throw new Error("retrieval.diagnosticExcerpts \u5FC5\u987B\u4E3A true \u6216 false");
   if (overrides.semanticReview !== void 0 && typeof overrides.semanticReview !== "boolean") throw new Error("retrieval.semanticReview \u5FC5\u987B\u4E3A true \u6216 false");
   if (evidenceThreshold !== void 0 && (typeof evidenceThreshold !== "number" || !Number.isFinite(evidenceThreshold) || evidenceThreshold < 0 || evidenceThreshold > 1)) {
     throw new Error("retrieval.evidenceScoreThreshold \u5FC5\u987B\u4E3A 0\uFF5E1 \u7684\u6570\u5B57");
@@ -96,12 +97,13 @@ async function validateConfig(config, filename2, options = {}) {
     retrieval: {
       ...retrieval,
       evidenceScoreThreshold: evidenceThreshold,
-      diagnostics: overrides.diagnostics,
+      diagnostics: overrides.diagnostics ?? RETRIEVAL_DEFAULTS.diagnostics,
       synonyms: readSynonyms(overrides.synonyms),
+      diagnosticExcerpts: overrides.diagnosticExcerpts ?? true,
       semanticReview: overrides.semanticReview === false ? false : void 0,
       semanticModelOrigins: readModelOrigins(overrides.semanticModelOrigins)
     },
-    documentPreview: await readDocumentPreview(config.documentPreview, directoryPath, options),
+    documentPreview: readDocumentPreview(config.documentPreview, directoryPath),
     service: service && { ...service, autoStart },
     knowledgeDirectory: { mode: directoryMode, refreshSeconds },
     // 未配置的旧版本继续允许模型按需检索。
@@ -136,9 +138,8 @@ function readSynonyms(value) {
     return { term: item.term.trim(), aliases: words(item.aliases), context: words(item.context) };
   });
 }
-async function readDocumentPreview(value, directory, { bundledOffice }) {
-  if (value === void 0) return void 0;
-  if (!isRecord(value) || typeof value.enabled !== "boolean") throw new Error("documentPreview.enabled \u5FC5\u987B\u4E3A true \u6216 false");
+function readDocumentPreview(value = {}, directory) {
+  if (!isRecord(value) || value.enabled !== void 0 && typeof value.enabled !== "boolean") throw new Error("documentPreview.enabled \u5FC5\u987B\u4E3A true \u6216 false");
   const { allowPdfViewer } = value;
   if (allowPdfViewer !== void 0 && typeof allowPdfViewer !== "boolean") throw new Error("documentPreview.allowPdfViewer \u5FC5\u987B\u4E3A true \u6216 false");
   function program(input, key) {
@@ -153,19 +154,7 @@ async function readDocumentPreview(value, directory, { bundledOffice }) {
     if (!/^[a-z0-9]{2,8}$/.test(format)) throw new Error("\u8F6C\u6362\u7EC4\u4EF6\u952E\u5FC5\u987B\u4E3A\u5C0F\u5199\u6587\u4EF6\u6269\u5C55\u540D\uFF0C\u4F8B\u5982 ofd");
     converters[format] = program(input, `converters.${format}`);
   }
-  let officeProgram = program(office, "office");
-  let officeBundled;
-  if (value.enabled && allowPdfViewer !== false && !officeProgram && process.platform === "win32") {
-    const relative = "tools/libreoffice/program/soffice.com";
-    for (const candidate of bundledOffice ? [bundledOffice] : [path.resolve(directory, "../plugin", relative), path.resolve(directory, "..", relative)]) {
-      if ((await fs.stat(candidate).catch(() => void 0))?.isFile()) {
-        officeProgram = candidate;
-        officeBundled = true;
-        break;
-      }
-    }
-  }
-  return { enabled: value.enabled, allowPdfViewer: allowPdfViewer ?? true, office: officeProgram, officeBundled, converters };
+  return { enabled: value.enabled ?? true, allowPdfViewer: allowPdfViewer ?? true, office: program(office, "office"), converters };
 }
 function readPlatform(raw, mode) {
   function routeFor(key, fallback) {

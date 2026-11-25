@@ -4,8 +4,15 @@ var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
 var __getOwnPropNames = Object.getOwnPropertyNames;
 var __getProtoOf = Object.getPrototypeOf;
 var __hasOwnProp = Object.prototype.hasOwnProperty;
+var __esm = (fn, res) => function __init() {
+  return fn && (res = (0, fn[__getOwnPropNames(fn)[0]])(fn = 0)), res;
+};
 var __commonJS = (cb, mod) => function __require() {
   return mod || (0, cb[__getOwnPropNames(cb)[0]])((mod = { exports: {} }).exports, mod), mod.exports;
+};
+var __export = (target, all) => {
+  for (var name in all)
+    __defProp(target, name, { get: all[name], enumerable: true });
 };
 var __copyProps = (to, from, except, desc) => {
   if (from && typeof from === "object" || typeof from === "function") {
@@ -925,7 +932,7 @@ var require_react_development = __commonJS({
             throw payload._result;
           }
         }
-        function lazy(ctor) {
+        function lazy2(ctor) {
           var payload = {
             // We use these fields to store the result.
             _status: Uninitialized,
@@ -1083,7 +1090,7 @@ var require_react_development = __commonJS({
           }
           return dispatcher.useContext(Context);
         }
-        function useState6(initialState) {
+        function useState7(initialState) {
           var dispatcher = resolveDispatcher();
           return dispatcher.useState(initialState);
         }
@@ -1095,7 +1102,7 @@ var require_react_development = __commonJS({
           var dispatcher = resolveDispatcher();
           return dispatcher.useRef(initialValue);
         }
-        function useEffect6(create, deps) {
+        function useEffect7(create, deps) {
           var dispatcher = resolveDispatcher();
           return dispatcher.useEffect(create, deps);
         }
@@ -1870,7 +1877,7 @@ var require_react_development = __commonJS({
         exports.createRef = createRef;
         exports.forwardRef = forwardRef3;
         exports.isValidElement = isValidElement;
-        exports.lazy = lazy;
+        exports.lazy = lazy2;
         exports.memo = memo;
         exports.startTransition = startTransition;
         exports.unstable_act = act;
@@ -1878,7 +1885,7 @@ var require_react_development = __commonJS({
         exports.useContext = useContext;
         exports.useDebugValue = useDebugValue;
         exports.useDeferredValue = useDeferredValue;
-        exports.useEffect = useEffect6;
+        exports.useEffect = useEffect7;
         exports.useId = useId2;
         exports.useImperativeHandle = useImperativeHandle;
         exports.useInsertionEffect = useInsertionEffect;
@@ -1886,7 +1893,7 @@ var require_react_development = __commonJS({
         exports.useMemo = useMemo2;
         exports.useReducer = useReducer;
         exports.useRef = useRef5;
-        exports.useState = useState6;
+        exports.useState = useState7;
         exports.useSyncExternalStore = useSyncExternalStore3;
         exports.useTransition = useTransition;
         exports.version = ReactVersion;
@@ -2382,9 +2389,9 @@ var require_react_dom_development = __commonJS({
         if (typeof __REACT_DEVTOOLS_GLOBAL_HOOK__ !== "undefined" && typeof __REACT_DEVTOOLS_GLOBAL_HOOK__.registerInternalModuleStart === "function") {
           __REACT_DEVTOOLS_GLOBAL_HOOK__.registerInternalModuleStart(new Error());
         }
-        var React6 = require_react();
+        var React7 = require_react();
         var Scheduler = require_scheduler();
-        var ReactSharedInternals = React6.__SECRET_INTERNALS_DO_NOT_USE_OR_YOU_WILL_BE_FIRED;
+        var ReactSharedInternals = React7.__SECRET_INTERNALS_DO_NOT_USE_OR_YOU_WILL_BE_FIRED;
         var suppressWarning = false;
         function setSuppressWarning(newSuppressWarning) {
           {
@@ -3991,7 +3998,7 @@ var require_react_dom_development = __commonJS({
           {
             if (props.value == null) {
               if (typeof props.children === "object" && props.children !== null) {
-                React6.Children.forEach(props.children, function(child) {
+                React7.Children.forEach(props.children, function(child) {
                   if (child == null) {
                     return;
                   }
@@ -23580,8 +23587,329 @@ var require_client = __commonJS({
   }
 });
 
+// plugin/src/pdf-viewer.tsx
+function PreviewMeter({ label, elapsedMs, received, total }) {
+  const [seconds, setSeconds] = (0, import_react3.useState)(0);
+  (0, import_react3.useEffect)(() => {
+    if (elapsedMs !== void 0) return;
+    const start = performance.now();
+    const timer = setInterval(() => setSeconds(Math.floor((performance.now() - start) / 1e3)), 1e3);
+    return () => clearInterval(timer);
+  }, [elapsedMs]);
+  const value = total && received !== void 0 ? Math.min(100, Math.floor(received / total * 100)) : void 0;
+  return /* @__PURE__ */ import_react3.default.createElement("div", { className: "tbea-preview-progress" }, /* @__PURE__ */ import_react3.default.createElement("div", null, /* @__PURE__ */ import_react3.default.createElement("span", { role: "status" }, label), /* @__PURE__ */ import_react3.default.createElement("span", null, value === void 0 ? `\u5DF2\u7528 ${elapsedMs === void 0 ? seconds : Math.floor(elapsedMs / 1e3)} \u79D2` : `${value}%`)), /* @__PURE__ */ import_react3.default.createElement("progress", { "aria-label": label, max: 100, value }));
+}
+function assetUrl(base, name) {
+  const url = new URL(base, document.baseURI);
+  url.searchParams.set("asset", name);
+  return url.href;
+}
+function pdfError(error) {
+  if (error instanceof Error && error.name === "PasswordException") return "\u6B64 PDF \u53D7\u5BC6\u7801\u4FDD\u62A4\uFF0C\u65E0\u6CD5\u9884\u89C8\u3002";
+  return error instanceof Error ? error.message : "PDF \u67E5\u770B\u5668\u52A0\u8F7D\u5931\u8D25\u3002";
+}
+function PdfViewer({ bridge, previewId, bytes, assetPath, restart }) {
+  const [documentPdf, setDocumentPdf] = (0, import_react3.useState)();
+  const [failure, setFailure] = (0, import_react3.useState)("");
+  const [attempt, setAttempt] = (0, import_react3.useState)(0);
+  const [firstPageReady, setFirstPageReady] = (0, import_react3.useState)(false);
+  const scrollRoot = (0, import_react3.useRef)(null);
+  const metric = (0, import_react3.useRef)({
+    started: performance.now(),
+    sent: false
+  });
+  const report = (0, import_react3.useCallback)((status) => {
+    if (metric.current.sent) return;
+    metric.current.sent = true;
+    const { started, assetReady, documentReady } = metric.current;
+    const elapsedMs = Math.round(performance.now() - started);
+    const assetMs = assetReady === void 0 ? elapsedMs : Math.round(assetReady - started);
+    const loadedMs = documentReady === void 0 ? elapsedMs : Math.round(documentReady - started);
+    void bridge(
+      "library-preview-result",
+      {
+        previewId,
+        status,
+        elapsedMs,
+        pdfAssetMs: assetMs,
+        ...assetReady !== void 0 && { pdfLoadMs: loadedMs - assetMs },
+        ...documentReady !== void 0 && { pdfRenderMs: elapsedMs - loadedMs }
+      },
+      AbortSignal.timeout(5e3)
+    ).catch(() => {
+    });
+  }, [bridge, previewId]);
+  const firstPage = (0, import_react3.useCallback)((error) => {
+    if (metric.current.sent) return;
+    if (error) {
+      setFailure(error);
+      report("render-failed");
+    } else {
+      setFirstPageReady(true);
+      report("ready");
+    }
+  }, [report]);
+  (0, import_react3.useEffect)(() => {
+    const controller = new AbortController();
+    metric.current = { started: performance.now(), sent: false };
+    setFirstPageReady(false);
+    setDocumentPdf(void 0);
+    setFailure("");
+    let loading;
+    const dispose = () => {
+      controller.abort();
+      void loading?.destroy().catch(() => {
+      });
+      loading = void 0;
+    };
+    const fail = (error) => {
+      if (controller.signal.aborted) return;
+      setFailure(pdfError(error));
+      const name = error instanceof Error ? error.name : "";
+      report(name === "PasswordException" ? "password" : name === "InvalidPDFException" ? "invalid-pdf" : "load-failed");
+      dispose();
+    };
+    async function loadPdf() {
+      const engine = await import(assetUrl(assetPath, "pdf.mjs"));
+      if (controller.signal.aborted) return;
+      metric.current.assetReady = performance.now();
+      engine.GlobalWorkerOptions.workerSrc = assetUrl(assetPath, "pdf.worker.mjs");
+      const transport = new engine.PDFDataRangeTransport(bytes, null, true);
+      const read = async (begin, end) => {
+        const result = new Uint8Array(end - begin);
+        for (let offset = begin; offset < end; offset += requestBytes) {
+          const limit = Math.min(end, offset + requestBytes);
+          const chunk = await bridge("library-pdf-range", { previewId, begin: offset, end: limit }, controller.signal);
+          if (chunk.bytes.length !== limit - offset) throw new Error("PDF \u6570\u636E\u8BFB\u53D6\u4E0D\u5B8C\u6574\u3002");
+          result.set(chunk.bytes, offset - begin);
+        }
+        if (!controller.signal.aborted) transport.onDataRange(begin, result);
+      };
+      transport.requestDataRange = (begin, end) => {
+        void read(begin, end).catch(fail);
+      };
+      transport.abort = () => controller.abort();
+      loading = engine.getDocument({
+        range: transport,
+        disableStream: true,
+        disableAutoFetch: true,
+        cMapUrl: `${assetUrl(assetPath, "cmaps")}/`,
+        standardFontDataUrl: `${assetUrl(assetPath, "standard_fonts")}/`,
+        wasmUrl: `${assetUrl(assetPath, "wasm")}/`,
+        enableXfa: false,
+        maxImageSize: 32 * 1024 * 1024
+      });
+      const pdf = await loading.promise;
+      if (controller.signal.aborted) return;
+      metric.current.documentReady = performance.now();
+      if (pdf.numPages < 1 || pdf.numPages > 3e3) throw new Error("\u6587\u6863\u9884\u89C8\u652F\u6301 1 \u81F3 3000 \u9875");
+      setDocumentPdf({ pdf, disableAnnotations: engine.AnnotationMode.DISABLE });
+    }
+    void loadPdf().catch(fail);
+    return dispose;
+  }, [bridge, previewId, bytes, assetPath, attempt, report]);
+  if (failure) return /* @__PURE__ */ import_react3.default.createElement("div", { className: "tbea-library-state tbea-library-error", role: "alert" }, /* @__PURE__ */ import_react3.default.createElement("span", null, failure), /* @__PURE__ */ import_react3.default.createElement("button", { type: "button", className: "tbea-library-button", onClick: () => failure.includes("\u9884\u89C8\u5DF2\u8FC7\u671F") ? restart() : setAttempt((value) => value + 1) }, "\u91CD\u8BD5"));
+  return /* @__PURE__ */ import_react3.default.createElement(import_react3.default.Fragment, null, !firstPageReady && /* @__PURE__ */ import_react3.default.createElement(PreviewMeter, { label: "\u6B63\u5728\u52A0\u8F7D\u9996\u9875\u2026" }), documentPdf && /* @__PURE__ */ import_react3.default.createElement("div", { className: "tbea-library-pages", ref: scrollRoot, tabIndex: 0, "aria-label": "PDF \u67E5\u770B\u5668\uFF0C\u6EDA\u52A8\u8FDE\u7EED\u9605\u8BFB" }, Array.from({ length: firstPageReady ? documentPdf.pdf.numPages : 1 }, (_, index) => /* @__PURE__ */ import_react3.default.createElement(PdfPage, { key: index, ...documentPdf, number: index + 1, root: scrollRoot, onFirstPage: index === 0 ? firstPage : void 0 }))));
+}
+function PdfPage({ pdf, disableAnnotations, number, root, onFirstPage }) {
+  const element = (0, import_react3.useRef)(null);
+  const surface = (0, import_react3.useRef)(null);
+  const [near, setNear] = (0, import_react3.useState)(number === 1);
+  const [ratio, setRatio] = (0, import_react3.useState)("1 / 1.414");
+  const [error, setError] = (0, import_react3.useState)("");
+  (0, import_react3.useEffect)(() => {
+    const observer = new IntersectionObserver(([entry]) => setNear(entry.isIntersecting), { root: root.current, rootMargin: "650px 0px" });
+    if (element.current) observer.observe(element.current);
+    return () => observer.disconnect();
+  }, [root]);
+  (0, import_react3.useEffect)(() => {
+    const canvas = surface.current;
+    if (!near || !canvas) return;
+    let cancelled = false;
+    let task;
+    void pdf.getPage(number).then(async (page) => {
+      if (cancelled) return;
+      const base = page.getViewport({ scale: 1 });
+      const viewport = page.getViewport({ scale: 1800 / Math.max(base.width, base.height) });
+      canvas.width = Math.ceil(viewport.width);
+      canvas.height = Math.ceil(viewport.height);
+      setRatio(`${base.width} / ${base.height}`);
+      task = page.render({ canvas, viewport, annotationMode: disableAnnotations });
+      await task.promise;
+      page.cleanup();
+      if (!cancelled) onFirstPage?.();
+    }).catch((failure) => {
+      if (!cancelled) {
+        const message = pdfError(failure);
+        setError(message);
+        onFirstPage?.(message);
+      }
+    });
+    return () => {
+      cancelled = true;
+      task?.cancel();
+      canvas.width = 0;
+      canvas.height = 0;
+    };
+  }, [near, number, pdf, disableAnnotations, onFirstPage]);
+  return /* @__PURE__ */ import_react3.default.createElement("figure", { className: "tbea-library-page", ref: element }, /* @__PURE__ */ import_react3.default.createElement("div", { className: "tbea-library-sheet", style: { aspectRatio: ratio } }, error ? /* @__PURE__ */ import_react3.default.createElement("div", { className: "tbea-library-state tbea-library-error", role: "alert" }, error) : near && /* @__PURE__ */ import_react3.default.createElement("canvas", { ref: surface, className: "tbea-library-pdf-page", role: "img", "aria-label": `\u539F\u6587\u7B2C ${number} \u9875` })), /* @__PURE__ */ import_react3.default.createElement("figcaption", null, "\u7B2C ", number, " \u9875"));
+}
+var import_react3, requestBytes;
+var init_pdf_viewer = __esm({
+  "plugin/src/pdf-viewer.tsx"() {
+    "use strict";
+    import_react3 = __toESM(require_react(), 1);
+    requestBytes = 1024 * 1024;
+  }
+});
+
+// plugin/src/spreadsheet-viewer.tsx
+var spreadsheet_viewer_exports = {};
+__export(spreadsheet_viewer_exports, {
+  SpreadsheetViewer: () => SpreadsheetViewer
+});
+function SpreadsheetViewer({ bridge, previewId, bytes, format, assetPath, restart }) {
+  const [sheets, setSheets] = (0, import_react4.useState)();
+  const [selected, setSelected] = (0, import_react4.useState)(0);
+  const [ready, setReady] = (0, import_react4.useState)(false);
+  const [failure, setFailure] = (0, import_react4.useState)("");
+  const [parsed, setParsed] = (0, import_react4.useState)();
+  (0, import_react4.useEffect)(() => {
+    const controller = new AbortController();
+    const { signal } = controller;
+    const started = performance.now();
+    let worker;
+    let timer;
+    const fail = (category, parseMs, message) => {
+      if (signal.aborted) return;
+      worker?.terminate();
+      clearTimeout(timer);
+      setFailure(message ?? messages[category]);
+      void bridge(
+        "library-preview-result",
+        { previewId, status: category, parseMs, elapsedMs: Math.round(performance.now() - started) },
+        AbortSignal.timeout(5e3)
+      ).catch(() => {
+      });
+    };
+    async function load() {
+      const buffer = new Uint8Array(bytes);
+      for (let begin = 0; begin < bytes; begin += requestBytes2) {
+        const end = Math.min(bytes, begin + requestBytes2);
+        const chunk = await bridge("library-sheet-range", { previewId, begin, end }, signal);
+        if (chunk.bytes.length !== end - begin) throw new Error(messages["load-failed"]);
+        buffer.set(chunk.bytes, begin);
+      }
+      signal.throwIfAborted();
+      worker = new Worker(assetUrl(assetPath, "sheet.worker.mjs"), { type: "module" });
+      worker.onerror = () => fail("load-failed");
+      worker.onmessage = ({ data }) => {
+        if (signal.aborted) return;
+        clearTimeout(timer);
+        worker?.terminate();
+        if ("error" in data) fail(data.error, data.parseMs);
+        else {
+          setSheets(data.sheets);
+          setParsed({ started, parseMs: data.parseMs });
+        }
+      };
+      const parsingStarted = performance.now();
+      timer = setTimeout(() => fail("sheet-timeout", Math.round(performance.now() - parsingStarted)), 2e4);
+      worker.postMessage({ bytes: buffer, format }, [buffer.buffer]);
+    }
+    void load().catch((error) => fail("load-failed", void 0, error instanceof Error ? error.message : void 0));
+    return () => {
+      controller.abort();
+      clearTimeout(timer);
+      worker?.terminate();
+    };
+  }, [bridge, previewId, bytes, format, assetPath]);
+  (0, import_react4.useEffect)(() => {
+    if (!parsed) return;
+    let displayed = 0;
+    const committed = requestAnimationFrame(() => {
+      displayed = requestAnimationFrame(() => {
+        setReady(true);
+        void bridge("library-preview-result", {
+          previewId,
+          status: "ready",
+          parseMs: parsed.parseMs,
+          elapsedMs: Math.round(performance.now() - parsed.started)
+        }, AbortSignal.timeout(5e3)).catch(() => {
+        });
+      });
+    });
+    return () => {
+      cancelAnimationFrame(committed);
+      cancelAnimationFrame(displayed);
+    };
+  }, [bridge, parsed, previewId]);
+  if (failure) return /* @__PURE__ */ import_react4.default.createElement("div", { className: "tbea-library-state tbea-library-error", role: "alert" }, /* @__PURE__ */ import_react4.default.createElement("span", null, failure), /* @__PURE__ */ import_react4.default.createElement("button", { type: "button", className: "tbea-library-button", onClick: restart }, "\u91CD\u8BD5"));
+  return /* @__PURE__ */ import_react4.default.createElement(import_react4.default.Fragment, null, !ready && /* @__PURE__ */ import_react4.default.createElement(PreviewMeter, { label: "\u6B63\u5728\u8BFB\u53D6\u5DE5\u4F5C\u8868\u2026" }), sheets && /* @__PURE__ */ import_react4.default.createElement("div", { className: "tbea-sheet" }, /* @__PURE__ */ import_react4.default.createElement("label", null, "\u5DE5\u4F5C\u8868 ", /* @__PURE__ */ import_react4.default.createElement("select", { value: selected, onChange: (event) => setSelected(Number(event.target.value)) }, sheets.map((sheet, index) => /* @__PURE__ */ import_react4.default.createElement("option", { key: index, value: index }, sheet.name)))), /* @__PURE__ */ import_react4.default.createElement(SheetTable, { key: selected, sheet: sheets[selected] })));
+}
+function columnName(index) {
+  let label = "";
+  for (let column = index + 1; column > 0; column = Math.floor((column - 1) / 26)) {
+    label = String.fromCharCode(65 + (column - 1) % 26) + label;
+  }
+  return label;
+}
+function SheetTable({ sheet }) {
+  const [page, setPage] = (0, import_react4.useState)(0);
+  const first = page * rowsPerPage;
+  const last = Math.min(sheet.rows, first + rowsPerPage);
+  const grid = /* @__PURE__ */ new Map();
+  for (const merge of sheet.merges) {
+    const top = Math.max(first, merge.row);
+    const bottom = Math.min(last, merge.row + merge.rows);
+    if (bottom <= top) continue;
+    const index = top * sheet.columns + merge.column;
+    let overlaps = false;
+    for (let row = top; row < bottom && !overlaps; row++) {
+      for (let col = merge.column; col < merge.column + merge.columns; col++) {
+        if (grid.has(row * sheet.columns + col)) {
+          overlaps = true;
+          break;
+        }
+      }
+    }
+    if (overlaps) continue;
+    for (let row = top; row < bottom; row++) {
+      for (let col = merge.column; col < merge.column + merge.columns; col++) grid.set(row * sheet.columns + col, null);
+    }
+    grid.set(index, { rows: bottom - top, columns: merge.columns, value: sheet.cells[merge.row * sheet.columns + merge.column] });
+  }
+  return /* @__PURE__ */ import_react4.default.createElement(import_react4.default.Fragment, null, sheet.rows > rowsPerPage && /* @__PURE__ */ import_react4.default.createElement("nav", { className: "tbea-sheet-rows", "aria-label": "\u5DE5\u4F5C\u8868\u884C\u8303\u56F4" }, /* @__PURE__ */ import_react4.default.createElement("button", { type: "button", className: "tbea-library-button", disabled: !page, onClick: () => setPage(page - 1) }, "\u4E0A\u4E00\u7EC4"), /* @__PURE__ */ import_react4.default.createElement("span", null, "\u7B2C ", sheet.startRow + first + 1, " \u81F3 ", sheet.startRow + last, " \u884C"), /* @__PURE__ */ import_react4.default.createElement("button", { type: "button", className: "tbea-library-button", disabled: last >= sheet.rows, onClick: () => setPage(page + 1) }, "\u4E0B\u4E00\u7EC4")), /* @__PURE__ */ import_react4.default.createElement("div", { key: page, className: "tbea-sheet-scroll", tabIndex: 0, "aria-label": "\u6EDA\u52A8\u67E5\u770B\u5DE5\u4F5C\u8868" }, /* @__PURE__ */ import_react4.default.createElement("table", { "aria-label": sheet.name }, /* @__PURE__ */ import_react4.default.createElement("thead", null, /* @__PURE__ */ import_react4.default.createElement("tr", null, /* @__PURE__ */ import_react4.default.createElement("th", { "aria-label": "\u884C\u53F7" }), Array.from({ length: sheet.columns }, (_, col) => /* @__PURE__ */ import_react4.default.createElement("th", { key: col, scope: "col" }, columnName(sheet.startColumn + col))))), /* @__PURE__ */ import_react4.default.createElement("tbody", null, Array.from({ length: last - first }, (_, relative) => {
+    const row = first + relative;
+    return /* @__PURE__ */ import_react4.default.createElement("tr", { key: row }, /* @__PURE__ */ import_react4.default.createElement("th", { scope: "row" }, sheet.startRow + row + 1), Array.from({ length: sheet.columns }, (_2, col) => {
+      const index = row * sheet.columns + col;
+      const merge = grid.get(index);
+      if (merge === null) return null;
+      const value = merge ? merge.value : sheet.cells[index];
+      return /* @__PURE__ */ import_react4.default.createElement("td", { key: col, rowSpan: merge?.rows, colSpan: merge?.columns, title: value }, value);
+    }));
+  })))));
+}
+var import_react4, requestBytes2, rowsPerPage, messages;
+var init_spreadsheet_viewer = __esm({
+  "plugin/src/spreadsheet-viewer.tsx"() {
+    "use strict";
+    import_react4 = __toESM(require_react(), 1);
+    init_pdf_viewer();
+    requestBytes2 = 1024 * 1024;
+    rowsPerPage = 50;
+    messages = {
+      "invalid-sheet": "Excel \u6587\u4EF6\u635F\u574F\u6216\u683C\u5F0F\u4E0D\u53D7\u652F\u6301\uFF0C\u65E0\u6CD5\u9884\u89C8\u3002",
+      password: "\u6B64 Excel \u6587\u4EF6\u53D7\u5BC6\u7801\u4FDD\u62A4\uFF0C\u65E0\u6CD5\u9884\u89C8\u3002",
+      "sheet-too-large": "\u5DE5\u4F5C\u7C3F\u8D85\u8FC7\u9884\u89C8\u7684\u89E3\u538B\u3001\u5DE5\u4F5C\u8868\u6216\u5355\u5143\u683C\u4E0A\u9650\u3002",
+      "sheet-timeout": "\u8BFB\u53D6\u5DE5\u4F5C\u8868\u8D85\u65F6\uFF0C\u5DE5\u4F5C\u7C3F\u53EF\u80FD\u8FC7\u5927\u3002",
+      "load-failed": "\u5DE5\u4F5C\u8868\u8BFB\u53D6\u5931\u8D25\uFF0C\u8BF7\u91CD\u65B0\u6253\u5F00\u6216\u91CD\u8BD5\u3002"
+    };
+  }
+});
+
 // demo/entry.jsx
-var import_react7 = __toESM(require_react(), 1);
+var import_react8 = __toESM(require_react(), 1);
 var import_client = __toESM(require_client(), 1);
 
 // node_modules/lucide-react/dist/esm/createLucideIcon.js
@@ -23786,10 +24114,10 @@ var ZoomOut = createLucideIcon("ZoomOut", [
 ]);
 
 // plugin/src/client.jsx
-var import_react6 = __toESM(require_react(), 1);
+var import_react7 = __toESM(require_react(), 1);
 
 // plugin/src/style.css
-var style_default = "/* \u8DDF\u968F Harness 0.2.2-alpha.2 \u7684\u4E3B\u9898\u53D8\u91CF\uFF1B\u540E\u5907\u503C\u4EC5\u7528\u4E8E\u72EC\u7ACB\u6F14\u793A\u3002\n   \u4E0D\u5199\u5165\u5BBF\u4E3B\u53D8\u91CF\uFF0C\u4E0D\u4EE5\u7CFB\u7EDF\u6DF1\u8272\u5A92\u4F53\u67E5\u8BE2\u8986\u76D6 DSH \u7684\u624B\u52A8\u4E3B\u9898\u3002 */\n:where(.tbea-sources,.tbea-selection,.tbea-prefetched,.tbea-image-modal,.tbea-status,.tbea-error,.tbea-fallback) {\n  --tbea-fg:var(--dsw-alias-label-primary,#0f1115);\n  --tbea-muted:var(--dsw-alias-label-secondary,#61666b);\n  --tbea-subtle:var(--dsw-alias-label-tertiary,#81858c);\n  --tbea-surface:var(--dsw-alias-bg-layer-1,#fff);\n  --tbea-soft:var(--dsw-alias-markdown-code-block,#f9fafb);\n  --tbea-border:var(--dsw-alias-border-l2,rgba(0,0,0,.1));\n  --tbea-hover:var(--dsw-alias-interactive-bg-hover,rgba(38,49,72,.06));\n  --tbea-active:var(--dsw-alias-interactive-bg-active,rgba(38,49,72,.1));\n  --tbea-accent:var(--dsw-alias-state-business-primary,#4176e6);\n  --tbea-accent-bg:var(--dsw-alias-state-business-tertiary,#e4edfd);\n  --tbea-danger:var(--dsw-alias-state-error-primary,#ec1313);\n  box-sizing:border-box; min-width:0;\n  font-family:var(--dsw-font-family,system-ui,sans-serif);\n  font-size:var(--dsh-content-font-size,14px);\n  line-height:calc(24px + var(--dsh-content-font-delta,0px));\n  color:var(--tbea-fg);\n}\nbody[data-ds-dark-theme] :where(.tbea-sources,.tbea-selection,.tbea-prefetched,.tbea-image-modal,.tbea-status,.tbea-error,.tbea-fallback) {\n  --tbea-fg:var(--dsw-alias-label-primary,#f9fafb);\n  --tbea-muted:var(--dsw-alias-label-secondary,#adb2b8);\n  --tbea-subtle:var(--dsw-alias-label-tertiary,#81858c);\n  --tbea-surface:var(--dsw-alias-bg-layer-1,#232324);\n  --tbea-soft:var(--dsw-alias-markdown-code-block,#1b1b1c);\n  --tbea-border:var(--dsw-alias-border-l2,rgba(255,255,255,.12));\n  --tbea-hover:var(--dsw-alias-interactive-bg-hover,rgba(255,255,255,.08));\n  --tbea-active:var(--dsw-alias-interactive-bg-active,rgba(255,255,255,.14));\n  --tbea-accent:var(--dsw-alias-state-business-primary,#7aaaff);\n  --tbea-accent-bg:var(--dsw-alias-state-business-tertiary,#34415b);\n  --tbea-danger:var(--dsw-alias-state-error-primary,#f25a5a);\n}\n.tbea-sources *,.tbea-image-modal *,.tbea-selection * { box-sizing:border-box; }\n:where(.tbea-sources,.tbea-image-modal,.tbea-selection) :where(button,a) { font-family:inherit; font-size:inherit; line-height:inherit; -webkit-app-region:no-drag; }\n:where(.tbea-sources,.tbea-image-modal,.tbea-selection) button { appearance:none; cursor:pointer; }\n:where(.tbea-sources,.tbea-image-modal,.tbea-selection) :where(button,a):focus-visible,\n.tbea-table-scroll:focus-visible,.tbea-modal-image:focus-visible { outline:var(--dsw-focus-ring-width,2px) solid var(--dsw-focus-ring-color,var(--tbea-accent)); outline-offset:-2px; }\n:where(.tbea-sources,.tbea-image-modal,.tbea-selection) button:disabled { opacity:.4; cursor:not-allowed; }\n.tbea-sources svg,.tbea-selection svg,.tbea-image-modal svg { flex:none; stroke-width:1.7; }\n\n/* \u4E0E\u539F\u751F PlanChip / Button.sm \u5171\u7528 28px \u9AD8\u5EA6\u548C 8px \u5706\u89D2\u5C42\u7EA7\u3002 */\n.tbea-selection { display:flex; align-items:center; flex-wrap:wrap; gap:6px 8px; padding:4px 0; }\n/* \u590D\u7528\u8F93\u5165\u5361\u7247\u7684\u4E24\u4FA7\u7559\u767D\u548C\u5BBD\u5EA6\u4E0A\u9650\uFF0C\u5185\u7F29\u81F3\u7F16\u8F91\u533A\u7684\u6587\u5B57\u8D77\u70B9\u3002 */\n[data-composer-seat] .tbea-selection-dock {\n  padding-inline:var(--dsh-composer-side-clearance,0px);\n}\n[data-composer-seat] .tbea-selection {\n  max-inline-size:var(--dsh-composer-card-max-width,100%);\n  margin-inline:auto;\n  padding-inline:14px;\n}\n.tbea-selection-chip { display:inline-flex; align-items:center; flex:none; gap:4px; height:28px; padding:0 4px 0 8px; border:0; border-radius:var(--dsw-radius-sm,8px); font-size:13px; font-weight:500; line-height:20px; color:var(--tbea-accent); background:var(--tbea-accent-bg); }\n.tbea-selection-chip button { display:inline-flex; align-items:center; justify-content:center; width:24px; height:24px; padding:0; border:0; border-radius:var(--dsw-radius-xs,4px); background:transparent; color:inherit; }\n.tbea-selection-status,.tbea-selection-error { display:inline-flex; align-items:center; gap:6px; min-width:0; font-size:12px; line-height:18px; color:var(--tbea-muted); overflow-wrap:anywhere; }\n.tbea-selection-error { color:var(--tbea-danger); }\n.tbea-selection-error { flex-wrap:wrap; }\n.tbea-prefetched { width:100%; padding:4px 0; }\n.tbea-prefetched-label { font-size:var(--dsh-content-font-size-secondary,13px); color:var(--tbea-subtle); }\n\n.tbea-sources { width:100%; margin:8px 0; border:1px solid var(--tbea-border); border-radius:var(--dsw-radius-md,12px); background:transparent; }\n.tbea-source-toggle { display:flex; align-items:center; gap:6px; width:100%; min-height:36px; padding:4px 10px; border:0; border-radius:inherit; background:transparent; color:var(--tbea-muted); text-align:left; font-size:var(--dsh-content-font-size-secondary,13px); }\n.tbea-source-toggle strong { flex:none; font-weight:500; }\n.tbea-count,.tbea-demo { flex:none; padding:0 6px; border-radius:var(--dsw-radius-xs,4px); font-size:12px; line-height:20px; background:var(--tbea-hover); color:var(--tbea-muted); }\n.tbea-query { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--tbea-subtle); font-size:12px; }\n.tbea-source-body { padding:0 12px; border-top:1px solid var(--tbea-border); }\n.tbea-citation-group:not(:last-child) { border-bottom:1px solid var(--tbea-border); }\n.tbea-citation { min-width:0; padding:12px 0; }\n.tbea-related-sources { margin:0 0 10px; color:var(--tbea-muted); }\n.tbea-related-sources>summary { width:fit-content; max-width:100%; min-height:28px; padding:4px; font-size:var(--dsh-content-font-size-secondary,13px); cursor:pointer; }\n.tbea-related-sources>.tbea-citation { border-top:1px solid var(--tbea-border); }\n.tbea-citation-head { display:grid; grid-template-columns:16px minmax(0,1fr) 28px; align-items:start; gap:6px; min-height:28px; }\n.tbea-citation-head>svg { margin-top:6px; color:var(--tbea-subtle); }\n.tbea-citation-head strong { display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; min-width:0; padding-top:3px; overflow:hidden; font-size:var(--dsh-content-font-size-secondary,13px); font-weight:500; line-height:22px; overflow-wrap:anywhere; }\n.tbea-citation-id { color:var(--tbea-subtle); font:12px/18px var(--ds-font-family-code,Consolas,monospace); overflow-wrap:anywhere; }\n.tbea-meta { display:flex; flex-wrap:wrap; gap:2px 12px; margin-top:4px; color:var(--tbea-subtle); font-size:12px; line-height:18px; overflow-wrap:anywhere; }\n.tbea-content { margin:10px 0 4px; white-space:pre-wrap; overflow-wrap:anywhere; user-select:text; }\n.tbea-content.tbea-collapsed { display:-webkit-box; -webkit-line-clamp:5; -webkit-box-orient:vertical; overflow:hidden; }\n.tbea-text-button { display:inline-flex; align-items:center; justify-content:center; min-height:28px; padding:0 8px; border:0; border-radius:var(--dsw-radius-sm,8px); color:var(--tbea-muted); background:transparent; font-size:12px; line-height:18px; text-decoration:none; }\n.tbea-icon { display:inline-flex; align-items:center; justify-content:center; flex:none; width:28px; height:28px; padding:0; border:0; border-radius:var(--dsw-radius-sm,8px); color:var(--tbea-muted); background:transparent; text-decoration:none; }\n.tbea-icon svg { width:16px; height:16px; }\n.tbea-citation-actions { display:flex; flex-wrap:wrap; align-items:center; gap:4px; margin:6px -8px 0; }\n@media (hover:hover) {\n  .tbea-source-toggle:hover,.tbea-icon:hover:not(:disabled),.tbea-text-button:hover:not(:disabled),.tbea-selection-chip button:hover:not(:disabled) { background:var(--tbea-hover); color:var(--tbea-fg); }\n  .tbea-image-button:hover:not(:disabled) { border-color:var(--tbea-accent); }\n}\n.tbea-icon:active:not(:disabled),.tbea-text-button:active:not(:disabled),.tbea-source-toggle:active { background:var(--tbea-active); }\n\n.tbea-table-scroll { max-width:100%; max-height:360px; overflow:auto; overscroll-behavior:contain; margin:12px 0; border:1px solid var(--tbea-border); border-radius:var(--dsw-radius-sm,8px); }\n.tbea-table { min-width:100%; border-collapse:collapse; font-size:var(--dsh-content-font-size-secondary,13px); line-height:calc(22px + var(--dsh-content-font-delta-secondary,0px)); color:var(--tbea-fg); }\n.tbea-table th,.tbea-table td { min-width:90px; max-width:500px; padding:8px 12px; border:1px solid var(--tbea-border); text-align:left; vertical-align:top; white-space:pre-wrap; overflow-wrap:anywhere; }\n.tbea-table th { background:var(--tbea-soft); font-weight:500; }\n.tbea-gallery { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,220px),1fr)); gap:12px; margin:12px 0; }\n.tbea-image { min-width:0; margin:0; }\n.tbea-image-button { display:grid; place-items:center; position:relative; overflow:hidden; width:100%; height:160px; padding:8px; border:1px solid var(--tbea-border); border-radius:var(--dsw-radius-sm,8px); background:var(--tbea-soft); color:var(--tbea-muted); }\n.tbea-image-button:not(:disabled) { cursor:zoom-in; }\n.tbea-image-button img { display:block; position:absolute; inset:8px; width:calc(100% - 16px); height:calc(100% - 16px); object-fit:contain; }\n.tbea-image figcaption { margin-top:4px; color:var(--tbea-subtle); font-size:12px; line-height:18px; overflow-wrap:anywhere; }\n.tbea-details { display:grid; grid-template-columns:72px minmax(0,1fr); gap:6px 8px; padding:12px; margin:8px 0; border-radius:var(--dsw-radius-sm,8px); background:var(--tbea-soft); font-size:12px; line-height:20px; }\n.tbea-details dt { color:var(--tbea-subtle); }\n.tbea-details dd { margin:0; overflow-wrap:anywhere; user-select:text; }\n.tbea-error { display:flex; flex-wrap:wrap; align-items:center; gap:6px; padding:8px 0; color:var(--tbea-danger); font-size:12px; line-height:20px; overflow-wrap:anywhere; }\n.tbea-status { display:flex; align-items:center; gap:6px; padding:8px 0; color:var(--tbea-subtle); font-size:var(--dsh-content-font-size-secondary,13px); }\n.tbea-empty { margin:12px 0; color:var(--tbea-muted); }\n.tbea-fallback { max-height:300px; overflow:auto; white-space:pre-wrap; overflow-wrap:anywhere; font-family:var(--ds-font-family-code,Consolas,monospace); }\n.tbea-sr-only { position:absolute; width:1px; height:1px; padding:0; overflow:hidden; clip-path:inset(50%); white-space:nowrap; }\n.tbea-spin { animation:tbea-spin 1s linear infinite; }\n@keyframes tbea-spin { to { transform:rotate(360deg); } }\n@media (prefers-reduced-motion:reduce) { .tbea-spin { animation-duration:2s; } }\n\n/* \u6807\u9898\u6362\u884C\u548C\u5B57\u4F53\u653E\u5927\u65F6\uFF0C\u7531\u5B9E\u9645\u9AD8\u5EA6\u5206\u914D\u56FE\u7247\u7A7A\u95F4\uFF0C\u4E0D\u5199\u6B7B\u51CF\u6CD5\u3002 */\n.tbea-image-modal { position:fixed; inset:var(--dsh-frame-chrome-top,0px) 0 0; width:min(1100px,calc(100vw - 32px)); max-width:calc(100vw - 32px); height:min(800px,calc(100dvh - var(--dsh-frame-chrome-top,0px) - 32px)); max-height:calc(100dvh - var(--dsh-frame-chrome-top,0px) - 32px); margin:auto; padding:0; overflow:hidden; border:1px solid var(--tbea-border); border-radius:var(--dsw-radius-lg,16px); background:var(--tbea-surface); }\n.tbea-image-modal[open] { display:flex; flex-direction:column; }\n.tbea-image-modal::backdrop { background:var(--dsw-alias-bg-mask-1,rgba(0,0,0,.5)); }\n.tbea-modal-head { display:flex; flex:none; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px; min-height:48px; padding:8px 12px; border-bottom:1px solid var(--tbea-border); }\n.tbea-modal-head strong { flex:1 1 100px; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:var(--dsh-content-font-size-secondary,13px); font-weight:500; }\n.tbea-modal-tools { display:flex; align-items:center; flex:none; gap:4px; }\n.tbea-zoom-label { min-width:40px; text-align:center; color:var(--tbea-subtle); font-size:12px; line-height:20px; font-variant-numeric:tabular-nums; }\n.tbea-modal-image { flex:1; min-height:0; width:100%; padding:16px; overflow:auto; overscroll-behavior:contain; background:var(--tbea-soft); }\n.tbea-modal-canvas { display:flex; align-items:center; justify-content:center; min-width:100%; min-height:100%; width:max-content; }\n.tbea-modal-image img { display:block; flex:none; height:auto; max-width:none; object-fit:contain; }\n@media(max-width:480px) {\n  .tbea-source-toggle { flex-wrap:wrap; }\n  .tbea-query { flex-basis:100%; order:1; padding-left:22px; }\n  .tbea-source-body { padding:0 10px; }\n  .tbea-modal-head strong { flex-basis:100%; }\n  .tbea-modal-tools { width:100%; justify-content:flex-end; }\n}\n.tbea-library {\n  --tbea-lib-fg: var(--dsw-alias-label-primary, #20242a);\n  --tbea-lib-muted: var(--dsw-alias-label-secondary, #61666b);\n  --tbea-lib-surface: var(--dsw-alias-bg-layer-1, #fff);\n  --tbea-lib-soft: var(--dsw-alias-markdown-code-block, #f7f8fa);\n  --tbea-lib-border: var(--dsw-alias-border-l2, #e3e6ea);\n  --tbea-lib-active: var(--dsw-alias-interactive-bg-active, #edf3ff);\n  --tbea-lib-hover: var(--dsw-alias-interactive-bg-hover, #f4f6f9);\n  --tbea-lib-accent: var(--dsw-alias-state-business-primary, #4176e6);\n  display: flex; flex-direction: column; min-width: 0; min-height: 0; flex: 1; height: 100%;\n  color: var(--tbea-lib-fg); background: var(--tbea-lib-surface); font-size: 13px;\n  container-type: inline-size;\n}\n[data-ds-dark-theme] .tbea-library {\n  --tbea-lib-fg: var(--dsw-alias-label-primary, #ededf1);\n  --tbea-lib-muted: var(--dsw-alias-label-secondary, #b4b7c2);\n  --tbea-lib-surface: var(--dsw-alias-bg-layer-1, #202128);\n  --tbea-lib-soft: var(--dsw-alias-markdown-code-block, #17181e);\n  --tbea-lib-border: var(--dsw-alias-border-l2, #3b3e49);\n  --tbea-lib-active: var(--dsw-alias-interactive-bg-active, #353e53);\n  --tbea-lib-hover: var(--dsw-alias-interactive-bg-hover, #2e303b);\n}\n.tbea-library h1,.tbea-library h2,.tbea-library p { margin: 0; }\n.tbea-library-title { display:flex;align-items:center;justify-content:flex-start;gap:9px;padding:13px 18px;min-height:46px;border-bottom:1px solid var(--tbea-lib-border); }\n.tbea-library-title h1 { font-size:15px;font-weight:600; }\n.tbea-library-title span,.tbea-library-count { color:var(--tbea-lib-muted);font-size:12px; }\n.tbea-library-title span { margin-inline-start:auto; }\n.tbea-library-layout { display:grid;grid-template-columns:minmax(208px,27%) minmax(0,1fr);min-height:0;flex:1; }\n.tbea-library-list { min-width:0;min-height:0;overflow:auto;border-right:1px solid var(--tbea-lib-border); }\n.tbea-library-filters { display:grid;gap:9px;padding:13px 12px 9px;position:sticky;top:0;background:var(--tbea-lib-surface);z-index:1;border-bottom:1px solid var(--tbea-lib-border); }\n.tbea-library-field { display:grid;gap:5px;font-weight:600; }\n.tbea-library-field select,.tbea-library-search { color:var(--tbea-lib-fg);background:var(--tbea-lib-surface);border:1px solid var(--tbea-lib-border);border-radius:6px;min-width:0;min-height:32px; }\n.tbea-library-field select { width:100%;padding:3px 8px;font:inherit;font-weight:400; }\n@supports (appearance:base-select) and selector(select::picker(select)) {\n  .tbea-library-field select,.tbea-library-field select::picker(select) { appearance:base-select; }\n  .tbea-library-field select { align-items:center;gap:8px;padding:4px 10px;cursor:pointer; }\n  .tbea-library-field select::picker-icon { color:var(--tbea-lib-muted); }\n  .tbea-library-field select:open::picker-icon { rotate:180deg; }\n  .tbea-library-field select::picker(select) {\n    box-sizing:border-box;\n    inline-size:anchor-size(width);\n    min-inline-size:0;\n    max-block-size:min(280px,60dvh);\n    margin-block:4px;\n    padding:4px;\n    overflow-y:auto;\n    color:var(--tbea-lib-fg);\n    background:var(--tbea-lib-surface);\n    border:1px solid var(--tbea-lib-border);\n    border-radius:var(--dsw-radius-md,10px);\n    box-shadow:var(--dsw-elevation-panel,0 8px 24px rgba(0,0,0,.14));\n  }\n  .tbea-library-field option {\n    align-items:center;\n    gap:8px;\n    min-height:32px;\n    padding:6px 8px;\n    border-radius:var(--dsw-radius-sm,6px);\n    overflow-wrap:anywhere;\n    white-space:normal;\n    line-height:1.4;\n    cursor:pointer;\n  }\n  .tbea-library-field option:is(:hover,:focus-visible) { background:var(--tbea-lib-hover); }\n  .tbea-library-field option:checked { background:var(--tbea-lib-active);font-weight:600; }\n  .tbea-library-field option:focus-visible { outline:2px solid var(--tbea-lib-accent);outline-offset:-2px; }\n  .tbea-library-field option::checkmark { order:1;margin-inline-start:auto;color:var(--tbea-lib-accent); }\n}\n.tbea-library-description { color:var(--tbea-lib-muted);overflow-wrap:anywhere;max-height:5em;overflow:auto;font-size:12px;line-height:1.5; }\n.tbea-library-search { display:flex;gap:6px;align-items:center;padding:0 8px;color:var(--tbea-lib-muted); }\n.tbea-library-search input { color:var(--tbea-lib-fg);font:inherit;min-width:0;width:100%;min-height:28px;border:0;background:transparent; }\n.tbea-library-search input:focus { outline:none; }\n.tbea-library-search:focus-within,.tbea-library button:focus-visible,.tbea-library select:focus-visible,.tbea-library-pages:focus-visible { outline:2px solid var(--tbea-lib-accent);outline-offset:-2px; }\n.tbea-library-items { list-style:none;margin:0;padding:5px; }\n.tbea-library-items button { width:100%;text-align:left;display:flex;align-items:flex-start;gap:8px;padding:8px 7px;color:inherit;background:transparent;border:0;border-radius:6px;min-height:40px;cursor:pointer; }\n.tbea-library-items button svg { flex:none;margin-top:2px;color:var(--tbea-lib-muted); }\n.tbea-library-items button span { min-width:0; }\n.tbea-library-items button strong { display:block;font-size:13px;line-height:1.35;font-weight:500;overflow-wrap:anywhere; }\n.tbea-library-items button small { display:block;margin-top:3px;font-size:11px;color:var(--tbea-lib-muted); }\n.tbea-library-items button:hover,.tbea-library-button:hover { background:var(--tbea-lib-hover); }\n.tbea-library-items button[aria-current] { background:var(--tbea-lib-active); }\n.tbea-library-reader { display:flex;flex-direction:column;min-width:0;min-height:0;background:var(--tbea-lib-surface); }\n.tbea-library-empty { align-items:center;justify-content:center;gap:8px;color:var(--tbea-lib-muted);text-align:center;padding:20px; }\n.tbea-library-reader-heading { display:flex;align-items:center;gap:8px;padding:9px 12px;border-bottom:1px solid var(--tbea-lib-border); }\n.tbea-library-reader-heading div { min-width:0;flex:1; }\n.tbea-library-reader-heading h2 { font-size:14px;font-weight:600;overflow-wrap:anywhere;line-height:1.4; }\n.tbea-library-reader-heading p { color:var(--tbea-lib-muted);font-size:12px;line-height:1.5; }\n.tbea-preview-progress { padding:12px;color:var(--tbea-lib-muted); }\n.tbea-preview-progress div { display:flex;justify-content:space-between;gap:12px; }\n.tbea-preview-progress progress { display:block;width:100%;height:8px;margin-top:8px;accent-color:var(--tbea-lib-accent); }\n.tbea-library-text { flex:1;min-height:0;overflow:auto;padding:12px clamp(10px,3%,24px);line-height:1.6;overflow-wrap:anywhere; }\n.tbea-library-text pre { white-space:pre-wrap; }\n.tbea-library-text img { max-width:100%;height:auto; }\n.tbea-library-text table { border-collapse:collapse; }\n.tbea-library-pdf-page { display:block;width:100%;height:auto;background:#fff; }\n.tbea-library-state { display:flex;gap:7px;align-items:center;padding:11px 12px;color:var(--tbea-lib-muted);line-height:1.5;overflow-wrap:anywhere; }\n.tbea-library-state svg { flex:none; }\n.tbea-library-error { flex-wrap:wrap; }\n.tbea-library-button { min-height:30px;min-width:30px;display:inline-flex;align-items:center;justify-content:center;gap:5px;background:transparent;color:inherit;border:1px solid var(--tbea-lib-border);border-radius:6px;padding:0 6px;cursor:pointer;font:inherit;flex:none; }\n.tbea-library-pages { flex:1;min-height:0;overflow:auto;overscroll-behavior:contain;background:var(--tbea-lib-soft);padding:14px clamp(7px,2.5cqw,24px); }\n.tbea-library-page { width:min(100%,960px);margin:0 auto 15px;text-align:center; }\n.tbea-library-page figcaption { padding-top:7px;font-size:11px;color:var(--tbea-lib-muted); }\n.tbea-library-sheet { display:grid;place-items:center;background:#fff;border:1px solid var(--tbea-lib-border);overflow:hidden;color:#24262d; }\n.tbea-library-sheet .tbea-library-state { color:#40444c; }\n.tbea-cited-documents { width:min(100%, 960px);margin-inline:auto;padding:12px clamp(10px,3%,24px);box-sizing:border-box;height:auto; }\n.tbea-cited-list { margin:0;padding:0;list-style:none; }\n.tbea-cited-row { display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px 16px;align-items:start;padding:10px 4px;border-bottom:1px solid var(--tbea-lib-border); }\n.tbea-cited-document p { padding-inline-start:24px;color:var(--tbea-lib-muted);font-size:12px;overflow-wrap:anywhere; }\n.tbea-cited-name { display:flex;align-items:flex-start;gap:8px;padding:4px 0;color:var(--tbea-lib-accent);background:none;border:0;text-align:start;font:inherit;font-weight:600;cursor:pointer;overflow-wrap:anywhere; }\n.tbea-cited-name:hover span { text-decoration:underline; }\n.tbea-cited-name svg { flex:none;margin-top:1px; }\n.tbea-cited-turns summary { list-style:none;user-select:none; }\n.tbea-cited-turns summary::-webkit-details-marker { display:none; }\n.tbea-cited-turns ul { list-style:none;display:grid;gap:4px;margin:5px 0 0;padding:0;max-height:160px;overflow:auto; }\n.tbea-cited-turns li button { width:100%; }\n.tbea-cited-preview { display:flex;flex-direction:column;block-size:min(68dvh, 900px);min-height:0;border:1px solid var(--tbea-lib-border);border-radius:8px;overflow:hidden; }\n.tbea-cited-preview .tbea-library-reader { flex:1; }\n.tbea-cited-status { display:inline-block;margin-inline-start:7px;padding:1px 5px;border-radius:5px;background:var(--tbea-lib-active);color:var(--tbea-lib-fg); }\n.tbea-citation-dialog { border:0;padding:0;border-radius:10px;width:min(900px,calc(100vw - 28px));height:min(760px,82dvh);overflow:hidden; }\n.tbea-citation-dialog::backdrop { background:rgba(0,0,0,.45); }\n@container (max-width: 590px) {\n  .tbea-library-layout { grid-template-columns:minmax(0,1fr); }\n  .tbea-library-list { border-right:0; }\n  .tbea-library-empty,.tbea-library-has-selection .tbea-library-list { display:none; }\n}\n";
+var style_default = "/* \u8DDF\u968F Harness 0.2.2-alpha.2 \u7684\u4E3B\u9898\u53D8\u91CF\uFF1B\u540E\u5907\u503C\u4EC5\u7528\u4E8E\u72EC\u7ACB\u6F14\u793A\u3002\n   \u4E0D\u5199\u5165\u5BBF\u4E3B\u53D8\u91CF\uFF0C\u4E0D\u4EE5\u7CFB\u7EDF\u6DF1\u8272\u5A92\u4F53\u67E5\u8BE2\u8986\u76D6 DSH \u7684\u624B\u52A8\u4E3B\u9898\u3002 */\n:where(.tbea-sources,.tbea-selection,.tbea-prefetched,.tbea-image-modal,.tbea-status,.tbea-error,.tbea-fallback) {\n  --tbea-fg:var(--dsw-alias-label-primary,#0f1115);\n  --tbea-muted:var(--dsw-alias-label-secondary,#61666b);\n  --tbea-subtle:var(--dsw-alias-label-tertiary,#81858c);\n  --tbea-surface:var(--dsw-alias-bg-layer-1,#fff);\n  --tbea-soft:var(--dsw-alias-markdown-code-block,#f9fafb);\n  --tbea-border:var(--dsw-alias-border-l2,rgba(0,0,0,.1));\n  --tbea-hover:var(--dsw-alias-interactive-bg-hover,rgba(38,49,72,.06));\n  --tbea-active:var(--dsw-alias-interactive-bg-active,rgba(38,49,72,.1));\n  --tbea-accent:var(--dsw-alias-state-business-primary,#4176e6);\n  --tbea-accent-bg:var(--dsw-alias-state-business-tertiary,#e4edfd);\n  --tbea-danger:var(--dsw-alias-state-error-primary,#ec1313);\n  box-sizing:border-box; min-width:0;\n  font-family:var(--dsw-font-family,system-ui,sans-serif);\n  font-size:var(--dsh-content-font-size,14px);\n  line-height:calc(24px + var(--dsh-content-font-delta,0px));\n  color:var(--tbea-fg);\n}\nbody[data-ds-dark-theme] :where(.tbea-sources,.tbea-selection,.tbea-prefetched,.tbea-image-modal,.tbea-status,.tbea-error,.tbea-fallback) {\n  --tbea-fg:var(--dsw-alias-label-primary,#f9fafb);\n  --tbea-muted:var(--dsw-alias-label-secondary,#adb2b8);\n  --tbea-subtle:var(--dsw-alias-label-tertiary,#81858c);\n  --tbea-surface:var(--dsw-alias-bg-layer-1,#232324);\n  --tbea-soft:var(--dsw-alias-markdown-code-block,#1b1b1c);\n  --tbea-border:var(--dsw-alias-border-l2,rgba(255,255,255,.12));\n  --tbea-hover:var(--dsw-alias-interactive-bg-hover,rgba(255,255,255,.08));\n  --tbea-active:var(--dsw-alias-interactive-bg-active,rgba(255,255,255,.14));\n  --tbea-accent:var(--dsw-alias-state-business-primary,#7aaaff);\n  --tbea-accent-bg:var(--dsw-alias-state-business-tertiary,#34415b);\n  --tbea-danger:var(--dsw-alias-state-error-primary,#f25a5a);\n}\n.tbea-sources *,.tbea-image-modal *,.tbea-selection * { box-sizing:border-box; }\n:where(.tbea-sources,.tbea-image-modal,.tbea-selection) :where(button,a) { font-family:inherit; font-size:inherit; line-height:inherit; -webkit-app-region:no-drag; }\n:where(.tbea-sources,.tbea-image-modal,.tbea-selection) button { appearance:none; cursor:pointer; }\n:where(.tbea-sources,.tbea-image-modal,.tbea-selection) :where(button,a):focus-visible,\n.tbea-table-scroll:focus-visible,.tbea-modal-image:focus-visible { outline:var(--dsw-focus-ring-width,2px) solid var(--dsw-focus-ring-color,var(--tbea-accent)); outline-offset:-2px; }\n:where(.tbea-sources,.tbea-image-modal,.tbea-selection) button:disabled { opacity:.4; cursor:not-allowed; }\n.tbea-sources svg,.tbea-selection svg,.tbea-image-modal svg { flex:none; stroke-width:1.7; }\n\n/* \u4E0E\u539F\u751F PlanChip / Button.sm \u5171\u7528 28px \u9AD8\u5EA6\u548C 8px \u5706\u89D2\u5C42\u7EA7\u3002 */\n.tbea-selection { display:flex; align-items:center; flex-wrap:wrap; gap:6px 8px; padding:4px 0; }\n/* \u590D\u7528\u8F93\u5165\u5361\u7247\u7684\u4E24\u4FA7\u7559\u767D\u548C\u5BBD\u5EA6\u4E0A\u9650\uFF0C\u5185\u7F29\u81F3\u7F16\u8F91\u533A\u7684\u6587\u5B57\u8D77\u70B9\u3002 */\n[data-composer-seat] .tbea-selection-dock {\n  padding-inline:var(--dsh-composer-side-clearance,0px);\n}\n[data-composer-seat] .tbea-selection {\n  max-inline-size:var(--dsh-composer-card-max-width,100%);\n  margin-inline:auto;\n  padding-inline:14px;\n}\n.tbea-selection-chip { display:inline-flex; align-items:center; flex:none; gap:4px; height:28px; padding:0 4px 0 8px; border:0; border-radius:var(--dsw-radius-sm,8px); font-size:13px; font-weight:500; line-height:20px; color:var(--tbea-accent); background:var(--tbea-accent-bg); }\n.tbea-selection-chip button { display:inline-flex; align-items:center; justify-content:center; width:24px; height:24px; padding:0; border:0; border-radius:var(--dsw-radius-xs,4px); background:transparent; color:inherit; }\n.tbea-selection-status,.tbea-selection-error { display:inline-flex; align-items:center; gap:6px; min-width:0; font-size:12px; line-height:18px; color:var(--tbea-muted); overflow-wrap:anywhere; }\n.tbea-selection-error { color:var(--tbea-danger); }\n.tbea-selection-error { flex-wrap:wrap; }\n.tbea-prefetched { width:100%; padding:4px 0; }\n.tbea-prefetched-label { font-size:var(--dsh-content-font-size-secondary,13px); color:var(--tbea-subtle); }\n\n.tbea-sources { width:100%; margin:8px 0; border:1px solid var(--tbea-border); border-radius:var(--dsw-radius-md,12px); background:transparent; }\n.tbea-source-toggle { display:flex; align-items:center; gap:6px; width:100%; min-height:36px; padding:4px 10px; border:0; border-radius:inherit; background:transparent; color:var(--tbea-muted); text-align:left; font-size:var(--dsh-content-font-size-secondary,13px); }\n.tbea-source-toggle strong { flex:none; font-weight:500; }\n.tbea-count,.tbea-demo { flex:none; padding:0 6px; border-radius:var(--dsw-radius-xs,4px); font-size:12px; line-height:20px; background:var(--tbea-hover); color:var(--tbea-muted); }\n.tbea-query { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--tbea-subtle); font-size:12px; }\n.tbea-source-body { padding:0 12px; border-top:1px solid var(--tbea-border); }\n.tbea-citation-group:not(:last-child) { border-bottom:1px solid var(--tbea-border); }\n.tbea-citation { min-width:0; padding:12px 0; }\n.tbea-related-sources { margin:0 0 10px; color:var(--tbea-muted); }\n.tbea-related-sources>summary { width:fit-content; max-width:100%; min-height:28px; padding:4px; font-size:var(--dsh-content-font-size-secondary,13px); cursor:pointer; }\n.tbea-related-sources>.tbea-citation { border-top:1px solid var(--tbea-border); }\n.tbea-citation-head { display:grid; grid-template-columns:16px minmax(0,1fr) 28px; align-items:start; gap:6px; min-height:28px; }\n.tbea-citation-head>svg { margin-top:6px; color:var(--tbea-subtle); }\n.tbea-citation-head strong { display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; min-width:0; padding-top:3px; overflow:hidden; font-size:var(--dsh-content-font-size-secondary,13px); font-weight:500; line-height:22px; overflow-wrap:anywhere; }\n.tbea-citation-id { color:var(--tbea-subtle); font:12px/18px var(--ds-font-family-code,Consolas,monospace); overflow-wrap:anywhere; }\n.tbea-meta { display:flex; flex-wrap:wrap; gap:2px 12px; margin-top:4px; color:var(--tbea-subtle); font-size:12px; line-height:18px; overflow-wrap:anywhere; }\n.tbea-content { margin:10px 0 4px; white-space:pre-wrap; overflow-wrap:anywhere; user-select:text; }\n.tbea-content.tbea-collapsed { display:-webkit-box; -webkit-line-clamp:5; -webkit-box-orient:vertical; overflow:hidden; }\n.tbea-text-button { display:inline-flex; align-items:center; justify-content:center; min-height:28px; padding:0 8px; border:0; border-radius:var(--dsw-radius-sm,8px); color:var(--tbea-muted); background:transparent; font-size:12px; line-height:18px; text-decoration:none; }\n.tbea-icon { display:inline-flex; align-items:center; justify-content:center; flex:none; width:28px; height:28px; padding:0; border:0; border-radius:var(--dsw-radius-sm,8px); color:var(--tbea-muted); background:transparent; text-decoration:none; }\n.tbea-icon svg { width:16px; height:16px; }\n.tbea-citation-actions { display:flex; flex-wrap:wrap; align-items:center; gap:4px; margin:6px -8px 0; }\n@media (hover:hover) {\n  .tbea-source-toggle:hover,.tbea-icon:hover:not(:disabled),.tbea-text-button:hover:not(:disabled),.tbea-selection-chip button:hover:not(:disabled) { background:var(--tbea-hover); color:var(--tbea-fg); }\n  .tbea-image-button:hover:not(:disabled) { border-color:var(--tbea-accent); }\n}\n.tbea-icon:active:not(:disabled),.tbea-text-button:active:not(:disabled),.tbea-source-toggle:active { background:var(--tbea-active); }\n\n.tbea-table-scroll { max-width:100%; max-height:360px; overflow:auto; overscroll-behavior:contain; margin:12px 0; border:1px solid var(--tbea-border); border-radius:var(--dsw-radius-sm,8px); }\n.tbea-table { min-width:100%; border-collapse:collapse; font-size:var(--dsh-content-font-size-secondary,13px); line-height:calc(22px + var(--dsh-content-font-delta-secondary,0px)); color:var(--tbea-fg); }\n.tbea-table th,.tbea-table td { min-width:90px; max-width:500px; padding:8px 12px; border:1px solid var(--tbea-border); text-align:left; vertical-align:top; white-space:pre-wrap; overflow-wrap:anywhere; }\n.tbea-table th { background:var(--tbea-soft); font-weight:500; }\n.tbea-gallery { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,220px),1fr)); gap:12px; margin:12px 0; }\n.tbea-image { min-width:0; margin:0; }\n.tbea-image-button { display:grid; place-items:center; position:relative; overflow:hidden; width:100%; height:160px; padding:8px; border:1px solid var(--tbea-border); border-radius:var(--dsw-radius-sm,8px); background:var(--tbea-soft); color:var(--tbea-muted); }\n.tbea-image-button:not(:disabled) { cursor:zoom-in; }\n.tbea-image-button img { display:block; position:absolute; inset:8px; width:calc(100% - 16px); height:calc(100% - 16px); object-fit:contain; }\n.tbea-image figcaption { margin-top:4px; color:var(--tbea-subtle); font-size:12px; line-height:18px; overflow-wrap:anywhere; }\n.tbea-details { display:grid; grid-template-columns:72px minmax(0,1fr); gap:6px 8px; padding:12px; margin:8px 0; border-radius:var(--dsw-radius-sm,8px); background:var(--tbea-soft); font-size:12px; line-height:20px; }\n.tbea-details dt { color:var(--tbea-subtle); }\n.tbea-details dd { margin:0; overflow-wrap:anywhere; user-select:text; }\n.tbea-error { display:flex; flex-wrap:wrap; align-items:center; gap:6px; padding:8px 0; color:var(--tbea-danger); font-size:12px; line-height:20px; overflow-wrap:anywhere; }\n.tbea-status { display:flex; align-items:center; gap:6px; padding:8px 0; color:var(--tbea-subtle); font-size:var(--dsh-content-font-size-secondary,13px); }\n.tbea-empty { margin:12px 0; color:var(--tbea-muted); }\n.tbea-fallback { max-height:300px; overflow:auto; white-space:pre-wrap; overflow-wrap:anywhere; font-family:var(--ds-font-family-code,Consolas,monospace); }\n.tbea-sr-only { position:absolute; width:1px; height:1px; padding:0; overflow:hidden; clip-path:inset(50%); white-space:nowrap; }\n.tbea-spin { animation:tbea-spin 1s linear infinite; }\n@keyframes tbea-spin { to { transform:rotate(360deg); } }\n@media (prefers-reduced-motion:reduce) { .tbea-spin { animation-duration:2s; } }\n\n/* \u6807\u9898\u6362\u884C\u548C\u5B57\u4F53\u653E\u5927\u65F6\uFF0C\u7531\u5B9E\u9645\u9AD8\u5EA6\u5206\u914D\u56FE\u7247\u7A7A\u95F4\uFF0C\u4E0D\u5199\u6B7B\u51CF\u6CD5\u3002 */\n.tbea-image-modal { position:fixed; inset:var(--dsh-frame-chrome-top,0px) 0 0; width:min(1100px,calc(100vw - 32px)); max-width:calc(100vw - 32px); height:min(800px,calc(100dvh - var(--dsh-frame-chrome-top,0px) - 32px)); max-height:calc(100dvh - var(--dsh-frame-chrome-top,0px) - 32px); margin:auto; padding:0; overflow:hidden; border:1px solid var(--tbea-border); border-radius:var(--dsw-radius-lg,16px); background:var(--tbea-surface); }\n.tbea-image-modal[open] { display:flex; flex-direction:column; }\n.tbea-image-modal::backdrop { background:var(--dsw-alias-bg-mask-1,rgba(0,0,0,.5)); }\n.tbea-modal-head { display:flex; flex:none; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px; min-height:48px; padding:8px 12px; border-bottom:1px solid var(--tbea-border); }\n.tbea-modal-head strong { flex:1 1 100px; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:var(--dsh-content-font-size-secondary,13px); font-weight:500; }\n.tbea-modal-tools { display:flex; align-items:center; flex:none; gap:4px; }\n.tbea-zoom-label { min-width:40px; text-align:center; color:var(--tbea-subtle); font-size:12px; line-height:20px; font-variant-numeric:tabular-nums; }\n.tbea-modal-image { flex:1; min-height:0; width:100%; padding:16px; overflow:auto; overscroll-behavior:contain; background:var(--tbea-soft); }\n.tbea-modal-canvas { display:flex; align-items:center; justify-content:center; min-width:100%; min-height:100%; width:max-content; }\n.tbea-modal-image img { display:block; flex:none; height:auto; max-width:none; object-fit:contain; }\n@media(max-width:480px) {\n  .tbea-source-toggle { flex-wrap:wrap; }\n  .tbea-query { flex-basis:100%; order:1; padding-left:22px; }\n  .tbea-source-body { padding:0 10px; }\n  .tbea-modal-head strong { flex-basis:100%; }\n  .tbea-modal-tools { width:100%; justify-content:flex-end; }\n}\n.tbea-library {\n  --tbea-lib-fg: var(--dsw-alias-label-primary, #20242a);\n  --tbea-lib-muted: var(--dsw-alias-label-secondary, #61666b);\n  --tbea-lib-surface: var(--dsw-alias-bg-layer-1, #fff);\n  --tbea-lib-soft: var(--dsw-alias-markdown-code-block, #f7f8fa);\n  --tbea-lib-border: var(--dsw-alias-border-l2, #e3e6ea);\n  --tbea-lib-active: var(--dsw-alias-interactive-bg-active, #edf3ff);\n  --tbea-lib-hover: var(--dsw-alias-interactive-bg-hover, #f4f6f9);\n  --tbea-lib-accent: var(--dsw-alias-state-business-primary, #4176e6);\n  display: flex; flex-direction: column; min-width: 0; min-height: 0; flex: 1; height: 100%;\n  color: var(--tbea-lib-fg); background: var(--tbea-lib-surface); font-size: 13px;\n  container-type: inline-size;\n}\n[data-ds-dark-theme] .tbea-library {\n  --tbea-lib-fg: var(--dsw-alias-label-primary, #ededf1);\n  --tbea-lib-muted: var(--dsw-alias-label-secondary, #b4b7c2);\n  --tbea-lib-surface: var(--dsw-alias-bg-layer-1, #202128);\n  --tbea-lib-soft: var(--dsw-alias-markdown-code-block, #17181e);\n  --tbea-lib-border: var(--dsw-alias-border-l2, #3b3e49);\n  --tbea-lib-active: var(--dsw-alias-interactive-bg-active, #353e53);\n  --tbea-lib-hover: var(--dsw-alias-interactive-bg-hover, #2e303b);\n}\n.tbea-library h1,.tbea-library h2,.tbea-library p { margin: 0; }\n.tbea-library-title { display:flex;align-items:center;justify-content:flex-start;gap:9px;padding:13px 18px;min-height:46px;border-bottom:1px solid var(--tbea-lib-border); }\n.tbea-library-title h1 { font-size:15px;font-weight:600; }\n.tbea-library-title span,.tbea-library-count { color:var(--tbea-lib-muted);font-size:12px; }\n.tbea-library-title span { margin-inline-start:auto; }\n.tbea-library-layout { display:grid;grid-template-columns:minmax(208px,27%) minmax(0,1fr);min-height:0;flex:1; }\n.tbea-library-list { min-width:0;min-height:0;overflow:auto;border-right:1px solid var(--tbea-lib-border); }\n.tbea-library-filters { display:grid;gap:9px;padding:13px 12px 9px;position:sticky;top:0;background:var(--tbea-lib-surface);z-index:1;border-bottom:1px solid var(--tbea-lib-border); }\n.tbea-library-field { display:grid;gap:5px;font-weight:600; }\n.tbea-library-field select,.tbea-library-search { color:var(--tbea-lib-fg);background:var(--tbea-lib-surface);border:1px solid var(--tbea-lib-border);border-radius:6px;min-width:0;min-height:32px; }\n.tbea-library-field select { width:100%;padding:3px 8px;font:inherit;font-weight:400; }\n@supports (appearance:base-select) and selector(select::picker(select)) {\n  .tbea-library-field select,.tbea-library-field select::picker(select) { appearance:base-select; }\n  .tbea-library-field select { align-items:center;gap:8px;padding:4px 10px;cursor:pointer; }\n  .tbea-library-field select::picker-icon { color:var(--tbea-lib-muted); }\n  .tbea-library-field select:open::picker-icon { rotate:180deg; }\n  .tbea-library-field select::picker(select) {\n    box-sizing:border-box;\n    inline-size:anchor-size(width);\n    min-inline-size:0;\n    max-block-size:min(280px,60dvh);\n    margin-block:4px;\n    padding:4px;\n    overflow-y:auto;\n    color:var(--tbea-lib-fg);\n    background:var(--tbea-lib-surface);\n    border:1px solid var(--tbea-lib-border);\n    border-radius:var(--dsw-radius-md,10px);\n    box-shadow:var(--dsw-elevation-panel,0 8px 24px rgba(0,0,0,.14));\n  }\n  .tbea-library-field option {\n    align-items:center;\n    gap:8px;\n    min-height:32px;\n    padding:6px 8px;\n    border-radius:var(--dsw-radius-sm,6px);\n    overflow-wrap:anywhere;\n    white-space:normal;\n    line-height:1.4;\n    cursor:pointer;\n  }\n  .tbea-library-field option:is(:hover,:focus-visible) { background:var(--tbea-lib-hover); }\n  .tbea-library-field option:checked { background:var(--tbea-lib-active);font-weight:600; }\n  .tbea-library-field option:focus-visible { outline:2px solid var(--tbea-lib-accent);outline-offset:-2px; }\n  .tbea-library-field option::checkmark { order:1;margin-inline-start:auto;color:var(--tbea-lib-accent); }\n}\n.tbea-library-description { color:var(--tbea-lib-muted);overflow-wrap:anywhere;max-height:5em;overflow:auto;font-size:12px;line-height:1.5; }\n.tbea-library-search { display:flex;gap:6px;align-items:center;padding:0 8px;color:var(--tbea-lib-muted); }\n.tbea-library-search input { color:var(--tbea-lib-fg);font:inherit;min-width:0;width:100%;min-height:28px;border:0;background:transparent; }\n.tbea-library-search input:focus { outline:none; }\n.tbea-library-search:focus-within,.tbea-library button:focus-visible,.tbea-library select:focus-visible,.tbea-library-pages:focus-visible { outline:2px solid var(--tbea-lib-accent);outline-offset:-2px; }\n.tbea-library-items { list-style:none;margin:0;padding:5px; }\n.tbea-library-items button { width:100%;text-align:left;display:flex;align-items:flex-start;gap:8px;padding:8px 7px;color:inherit;background:transparent;border:0;border-radius:6px;min-height:40px;cursor:pointer; }\n.tbea-library-items button svg { flex:none;margin-top:2px;color:var(--tbea-lib-muted); }\n.tbea-library-items button span { min-width:0; }\n.tbea-library-items button strong { display:block;font-size:13px;line-height:1.35;font-weight:500;overflow-wrap:anywhere; }\n.tbea-library-items button small { display:block;margin-top:3px;font-size:11px;color:var(--tbea-lib-muted); }\n.tbea-library-items button:hover,.tbea-library-button:hover { background:var(--tbea-lib-hover); }\n.tbea-library-items button[aria-current] { background:var(--tbea-lib-active); }\n.tbea-library-reader { display:flex;flex-direction:column;min-width:0;min-height:0;background:var(--tbea-lib-surface); }\n.tbea-library-empty { align-items:center;justify-content:center;gap:8px;color:var(--tbea-lib-muted);text-align:center;padding:20px; }\n.tbea-library-reader-heading { display:flex;align-items:center;gap:8px;padding:9px 12px;border-bottom:1px solid var(--tbea-lib-border); }\n.tbea-library-reader-heading div { min-width:0;flex:1; }\n.tbea-library-reader-heading h2 { font-size:14px;font-weight:600;overflow-wrap:anywhere;line-height:1.4; }\n.tbea-library-reader-heading p { color:var(--tbea-lib-muted);font-size:12px;line-height:1.5; }\n.tbea-preview-progress { padding:12px;color:var(--tbea-lib-muted); }\n.tbea-preview-progress div { display:flex;justify-content:space-between;gap:12px; }\n.tbea-preview-progress progress { display:block;width:100%;height:8px;margin-top:8px;accent-color:var(--tbea-lib-accent); }\n.tbea-library-text { flex:1;min-height:0;overflow:auto;padding:12px clamp(10px,3%,24px);line-height:1.6;overflow-wrap:anywhere; }\n.tbea-library-text pre { white-space:pre-wrap; }\n.tbea-library-text img { max-width:100%;height:auto; }\n.tbea-library-text table { border-collapse:collapse; }\n.tbea-library-pdf-page { display:block;width:100%;height:auto;background:#fff; }\n.tbea-library-state { display:flex;gap:7px;align-items:center;padding:11px 12px;color:var(--tbea-lib-muted);line-height:1.5;overflow-wrap:anywhere; }\n.tbea-library-state svg { flex:none; }\n.tbea-library-error { flex-wrap:wrap; }\n.tbea-library-button { min-height:30px;min-width:30px;display:inline-flex;align-items:center;justify-content:center;gap:5px;background:transparent;color:inherit;border:1px solid var(--tbea-lib-border);border-radius:6px;padding:0 6px;cursor:pointer;font:inherit;flex:none; }\n.tbea-library-pages { flex:1;min-height:0;overflow:auto;overscroll-behavior:contain;background:var(--tbea-lib-soft);padding:14px clamp(7px,2.5cqw,24px); }\n.tbea-library-page { width:min(100%,960px);margin:0 auto 15px;text-align:center; }\n.tbea-library-page figcaption { padding-top:7px;font-size:11px;color:var(--tbea-lib-muted); }\n.tbea-library-sheet { display:grid;place-items:center;background:#fff;border:1px solid var(--tbea-lib-border);overflow:hidden;color:#24262d; }\n.tbea-library-sheet .tbea-library-state { color:#40444c; }\n.tbea-cited-documents { width:min(100%, 960px);margin-inline:auto;padding:12px clamp(10px,3%,24px);box-sizing:border-box;height:auto; }\n.tbea-cited-list { margin:0;padding:0;list-style:none; }\n.tbea-cited-row { display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px 16px;align-items:start;padding:10px 4px;border-bottom:1px solid var(--tbea-lib-border); }\n.tbea-cited-document p { padding-inline-start:24px;color:var(--tbea-lib-muted);font-size:12px;overflow-wrap:anywhere; }\n.tbea-cited-name { display:flex;align-items:flex-start;gap:8px;padding:4px 0;color:var(--tbea-lib-accent);background:none;border:0;text-align:start;font:inherit;font-weight:600;cursor:pointer;overflow-wrap:anywhere; }\n.tbea-cited-name:hover span { text-decoration:underline; }\n.tbea-cited-name svg { flex:none;margin-top:1px; }\n.tbea-cited-turns summary { list-style:none;user-select:none; }\n.tbea-cited-turns summary::-webkit-details-marker { display:none; }\n.tbea-cited-turns ul { list-style:none;display:grid;gap:4px;margin:5px 0 0;padding:0;max-height:160px;overflow:auto; }\n.tbea-cited-turns li button { width:100%; }\n.tbea-cited-preview { display:flex;flex-direction:column;block-size:min(68dvh, 900px);min-height:0;border:1px solid var(--tbea-lib-border);border-radius:8px;overflow:hidden; }\n.tbea-cited-preview .tbea-library-reader { flex:1; }\n.tbea-cited-status { display:inline-block;margin-inline-start:7px;padding:1px 5px;border-radius:5px;background:var(--tbea-lib-active);color:var(--tbea-lib-fg); }\n.tbea-citation-dialog { border:0;padding:0;border-radius:10px;width:min(900px,calc(100vw - 28px));height:min(760px,82dvh);overflow:hidden; }\n.tbea-citation-dialog::backdrop { background:rgba(0,0,0,.45); }\n.tbea-citation-dialog-header { display:flex; align-items:center; flex-wrap:wrap; gap:8px; padding:10px 12px; }\n.tbea-citation-dialog-header h2 { flex:1 1 240px; margin:0; font-size:inherit; overflow-wrap:anywhere; }\n.tbea-citation-evidence { min-height:0; flex:1; overflow:auto; padding:0 12px 12px; }\n.tbea-citation-focused { border-inline-start:3px solid currentColor; }\n@container (max-width: 590px) {\n  .tbea-library-layout { grid-template-columns:minmax(0,1fr); }\n  .tbea-library-list { border-right:0; }\n  .tbea-library-empty,.tbea-library-has-selection .tbea-library-list { display:none; }\n}\n.tbea-sheet { min-width: 0; min-height: 0; display: flex; flex: 1; flex-direction: column; gap: 8px; padding: 0 12px 12px; }\n.tbea-sheet label, .tbea-sheet-rows { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }\n.tbea-sheet select { max-width: 100%; color: inherit; background: var(--tbea-surface, Canvas); font: inherit; }\n.tbea-sheet-scroll { overflow: auto; min-height: 0; max-height: 65vh; border: 1px solid color-mix(in srgb, currentColor 20%, transparent); }\n.tbea-sheet table { border-collapse: separate; border-spacing: 0; font-size: 0.9em; }\n.tbea-sheet th, .tbea-sheet td { border-bottom: 1px solid color-mix(in srgb, currentColor 18%, transparent); border-right: 1px solid color-mix(in srgb, currentColor 18%, transparent); padding: 4px 8px; }\n.tbea-sheet th { background: var(--tbea-surface, Canvas); }\n.tbea-sheet thead th { position: sticky; top: 0; z-index: 1; }\n.tbea-sheet td { min-width: 96px; max-width: 300px; overflow-wrap: anywhere; white-space: pre-wrap; }\n.tbea-sheet-rows button:disabled { opacity: .5; }\r\n";
 
 // plugin/src/composer.mjs
 function createSelectionClient(rpc) {
@@ -23884,175 +24212,28 @@ function registerKnowledgeEntries(ctx, store) {
 }
 
 // plugin/src/library-browser.tsx
-var import_react4 = __toESM(require_react(), 1);
+var import_react5 = __toESM(require_react(), 1);
 
 // plugin/src/display-transport.mjs
 var displayPath = "/api/tbea-knowledge";
 
-// plugin/src/pdf-viewer.tsx
-var import_react3 = __toESM(require_react(), 1);
-var requestBytes = 1024 * 1024;
-function PreviewMeter({ label, elapsedMs, received, total }) {
-  const [seconds, setSeconds] = (0, import_react3.useState)(0);
-  (0, import_react3.useEffect)(() => {
-    if (elapsedMs !== void 0) return;
-    const start = performance.now();
-    const timer = setInterval(() => setSeconds(Math.floor((performance.now() - start) / 1e3)), 1e3);
-    return () => clearInterval(timer);
-  }, [elapsedMs]);
-  const value = total && received !== void 0 ? Math.min(100, Math.floor(received / total * 100)) : void 0;
-  return /* @__PURE__ */ import_react3.default.createElement("div", { className: "tbea-preview-progress" }, /* @__PURE__ */ import_react3.default.createElement("div", null, /* @__PURE__ */ import_react3.default.createElement("span", { role: "status" }, label), /* @__PURE__ */ import_react3.default.createElement("span", null, value === void 0 ? `\u5DF2\u7528 ${elapsedMs === void 0 ? seconds : Math.floor(elapsedMs / 1e3)} \u79D2` : `${value}%`)), /* @__PURE__ */ import_react3.default.createElement("progress", { "aria-label": label, max: 100, value }));
-}
-function assetUrl(base, name) {
-  const url = new URL(base, document.baseURI);
-  url.searchParams.set("asset", name);
-  return url.href;
-}
-function pdfError(error) {
-  if (error instanceof Error && error.name === "PasswordException") return "\u6B64 PDF \u53D7\u5BC6\u7801\u4FDD\u62A4\uFF0C\u65E0\u6CD5\u9884\u89C8\u3002";
-  return error instanceof Error ? error.message : "PDF \u67E5\u770B\u5668\u52A0\u8F7D\u5931\u8D25\u3002";
-}
-function PdfViewer({ bridge, previewId, bytes, assetPath, restart }) {
-  const [documentPdf, setDocumentPdf] = (0, import_react3.useState)();
-  const [failure, setFailure] = (0, import_react3.useState)("");
-  const [attempt, setAttempt] = (0, import_react3.useState)(0);
-  const [firstPageReady, setFirstPageReady] = (0, import_react3.useState)(false);
-  const scrollRoot = (0, import_react3.useRef)(null);
-  const metric = (0, import_react3.useRef)({ started: performance.now(), sent: false });
-  const report = (0, import_react3.useCallback)((status) => {
-    if (metric.current.sent) return;
-    metric.current.sent = true;
-    void bridge(
-      "library-preview-result",
-      { previewId, status, elapsedMs: Math.round(performance.now() - metric.current.started) },
-      AbortSignal.timeout(5e3)
-    ).catch(() => {
-    });
-  }, [bridge, previewId]);
-  const firstPage = (0, import_react3.useCallback)((error) => {
-    if (metric.current.sent) return;
-    if (error) {
-      setFailure(error);
-      report("render-failed");
-    } else {
-      setFirstPageReady(true);
-      report("ready");
-    }
-  }, [report]);
-  (0, import_react3.useEffect)(() => {
-    const controller = new AbortController();
-    metric.current = { started: performance.now(), sent: false };
-    setFirstPageReady(false);
-    setDocumentPdf(void 0);
-    setFailure("");
-    let loading;
-    const dispose = () => {
-      controller.abort();
-      void loading?.destroy().catch(() => {
-      });
-      loading = void 0;
-    };
-    const fail = (error) => {
-      if (controller.signal.aborted) return;
-      setFailure(pdfError(error));
-      const name = error instanceof Error ? error.name : "";
-      report(name === "PasswordException" ? "password" : name === "InvalidPDFException" ? "invalid-pdf" : "load-failed");
-      dispose();
-    };
-    async function loadPdf() {
-      const engine = await import(assetUrl(assetPath, "pdf.mjs"));
-      if (controller.signal.aborted) return;
-      engine.GlobalWorkerOptions.workerSrc = assetUrl(assetPath, "pdf.worker.mjs");
-      const transport = new engine.PDFDataRangeTransport(bytes, null, true);
-      const read = async (begin, end) => {
-        const result = new Uint8Array(end - begin);
-        for (let offset = begin; offset < end; offset += requestBytes) {
-          const limit = Math.min(end, offset + requestBytes);
-          const chunk = await bridge("library-pdf-range", { previewId, begin: offset, end: limit }, controller.signal);
-          if (chunk.bytes.length !== limit - offset) throw new Error("PDF \u6570\u636E\u8BFB\u53D6\u4E0D\u5B8C\u6574\u3002");
-          result.set(chunk.bytes, offset - begin);
-        }
-        if (!controller.signal.aborted) transport.onDataRange(begin, result);
-      };
-      transport.requestDataRange = (begin, end) => {
-        void read(begin, end).catch(fail);
-      };
-      transport.abort = () => controller.abort();
-      loading = engine.getDocument({
-        range: transport,
-        disableStream: true,
-        disableAutoFetch: true,
-        cMapUrl: `${assetUrl(assetPath, "cmaps")}/`,
-        standardFontDataUrl: `${assetUrl(assetPath, "standard_fonts")}/`,
-        wasmUrl: `${assetUrl(assetPath, "wasm")}/`,
-        enableXfa: false,
-        maxImageSize: 32 * 1024 * 1024
-      });
-      const pdf = await loading.promise;
-      if (controller.signal.aborted) return;
-      if (pdf.numPages < 1 || pdf.numPages > 3e3) throw new Error("\u6587\u6863\u9884\u89C8\u652F\u6301 1 \u81F3 3000 \u9875");
-      setDocumentPdf({ pdf, disableAnnotations: engine.AnnotationMode.DISABLE });
-    }
-    void loadPdf().catch(fail);
-    return dispose;
-  }, [bridge, previewId, bytes, assetPath, attempt, report]);
-  if (failure) return /* @__PURE__ */ import_react3.default.createElement("div", { className: "tbea-library-state tbea-library-error", role: "alert" }, /* @__PURE__ */ import_react3.default.createElement("span", null, failure), /* @__PURE__ */ import_react3.default.createElement("button", { type: "button", className: "tbea-library-button", onClick: () => failure.includes("\u9884\u89C8\u5DF2\u8FC7\u671F") ? restart() : setAttempt((value) => value + 1) }, "\u91CD\u8BD5"));
-  return /* @__PURE__ */ import_react3.default.createElement(import_react3.default.Fragment, null, !firstPageReady && /* @__PURE__ */ import_react3.default.createElement(PreviewMeter, { label: "\u6B63\u5728\u52A0\u8F7D\u9996\u9875\u2026" }), documentPdf && /* @__PURE__ */ import_react3.default.createElement("div", { className: "tbea-library-pages", ref: scrollRoot, tabIndex: 0, "aria-label": "PDF \u67E5\u770B\u5668\uFF0C\u6EDA\u52A8\u8FDE\u7EED\u9605\u8BFB" }, Array.from({ length: firstPageReady ? documentPdf.pdf.numPages : 1 }, (_, index) => /* @__PURE__ */ import_react3.default.createElement(PdfPage, { key: index, ...documentPdf, number: index + 1, root: scrollRoot, onFirstPage: index === 0 ? firstPage : void 0 }))));
-}
-function PdfPage({ pdf, disableAnnotations, number, root, onFirstPage }) {
-  const element = (0, import_react3.useRef)(null);
-  const surface = (0, import_react3.useRef)(null);
-  const [near, setNear] = (0, import_react3.useState)(number === 1);
-  const [ratio, setRatio] = (0, import_react3.useState)("1 / 1.414");
-  const [error, setError] = (0, import_react3.useState)("");
-  (0, import_react3.useEffect)(() => {
-    const observer = new IntersectionObserver(([entry]) => setNear(entry.isIntersecting), { root: root.current, rootMargin: "650px 0px" });
-    if (element.current) observer.observe(element.current);
-    return () => observer.disconnect();
-  }, [root]);
-  (0, import_react3.useEffect)(() => {
-    const canvas = surface.current;
-    if (!near || !canvas) return;
-    let cancelled = false;
-    let task;
-    void pdf.getPage(number).then(async (page) => {
-      if (cancelled) return;
-      const base = page.getViewport({ scale: 1 });
-      const viewport = page.getViewport({ scale: 1800 / Math.max(base.width, base.height) });
-      canvas.width = Math.ceil(viewport.width);
-      canvas.height = Math.ceil(viewport.height);
-      setRatio(`${base.width} / ${base.height}`);
-      task = page.render({ canvas, viewport, annotationMode: disableAnnotations });
-      await task.promise;
-      page.cleanup();
-      if (!cancelled) onFirstPage?.();
-    }).catch((failure) => {
-      if (!cancelled) {
-        const message = pdfError(failure);
-        setError(message);
-        onFirstPage?.(message);
-      }
-    });
-    return () => {
-      cancelled = true;
-      task?.cancel();
-      canvas.width = 0;
-      canvas.height = 0;
-    };
-  }, [near, number, pdf, disableAnnotations, onFirstPage]);
-  return /* @__PURE__ */ import_react3.default.createElement("figure", { className: "tbea-library-page", ref: element }, /* @__PURE__ */ import_react3.default.createElement("div", { className: "tbea-library-sheet", style: { aspectRatio: ratio } }, error ? /* @__PURE__ */ import_react3.default.createElement("div", { className: "tbea-library-state tbea-library-error", role: "alert" }, error) : near && /* @__PURE__ */ import_react3.default.createElement("canvas", { ref: surface, className: "tbea-library-pdf-page", role: "img", "aria-label": `\u539F\u6587\u7B2C ${number} \u9875` })), /* @__PURE__ */ import_react3.default.createElement("figcaption", null, "\u7B2C ", number, " \u9875"));
-}
+// plugin/src/library-browser.tsx
+init_pdf_viewer();
+
+// src/preview-messages.ts
+var officeUnavailable = "\u5F53\u524D\u5320\u5B9D\u73AF\u5883\u672A\u63D0\u4F9B Word/PPT \u5185\u7F6E\u8F6C\u6362\uFF0C\u8BF7\u4F7F\u7528\u652F\u6301\u8BE5\u529F\u80FD\u7684\u5320\u5B9D\uFF0C\u6216\u8054\u7CFB\u7BA1\u7406\u5458\u914D\u7F6E\u8F6C\u6362\u7A0B\u5E8F";
 
 // plugin/src/library-browser.tsx
-var states = { disabled: "\u539F\u6587\u9884\u89C8\u672A\u542F\u7528", "converter-required": "\u5F85\u914D\u7F6E\u8F6C\u6362\u7EC4\u4EF6", unsupported: "\u5F53\u524D\u683C\u5F0F\u6682\u4E0D\u652F\u6301\u9884\u89C8" };
+var SpreadsheetViewer2 = (0, import_react5.lazy)(() => Promise.resolve().then(() => (init_spreadsheet_viewer(), spreadsheet_viewer_exports)).then((module) => ({ default: module.SpreadsheetViewer })));
+var states = { disabled: "\u539F\u6587\u9884\u89C8\u672A\u542F\u7528", "converter-required": "\u5F85\u914D\u7F6E\u4E13\u7528\u8F6C\u6362\u7EC4\u4EF6", "office-unavailable": "\u5185\u7F6E Word/PPT \u8F6C\u6362\u4E0D\u53EF\u7528", unsupported: "\u5F53\u524D\u683C\u5F0F\u6682\u4E0D\u652F\u6301\u9884\u89C8" };
 var statusLabels = { available: "\u53EF\u7528", enabled: "\u53EF\u7528", queuing: "\u6392\u961F\u4E2D", parsing: "\u89E3\u6790\u4E2D", indexing: "\u5904\u7406\u4E2D", parseError: "\u89E3\u6790\u5931\u8D25", error: "\u5904\u7406\u5931\u8D25", paused: "\u5DF2\u6682\u505C" };
 function errorMessage(error) {
   return error instanceof Error ? error.message : "\u77E5\u8BC6\u5E93\u8BF7\u6C42\u5931\u8D25\uFF0C\u8BF7\u91CD\u8BD5\u3002";
 }
 function useLibraryRequest(bridge, action, args, key) {
-  const [state, setState] = (0, import_react4.useState)();
-  const [revision, setRevision] = (0, import_react4.useState)(0);
-  (0, import_react4.useEffect)(() => {
+  const [state, setState] = (0, import_react5.useState)();
+  const [revision, setRevision] = (0, import_react5.useState)(0);
+  (0, import_react5.useEffect)(() => {
     if (key === void 0) return;
     const controller = new AbortController();
     setState({ key, revision, loading: true });
@@ -24066,25 +24247,25 @@ function useLibraryRequest(bridge, action, args, key) {
   return { ...state?.key === key && state?.revision === revision ? state : { loading: key !== void 0 }, retry: () => setRevision((value) => value + 1) };
 }
 function Wait({ children }) {
-  return /* @__PURE__ */ import_react4.default.createElement("div", { className: "tbea-library-state", role: "status" }, /* @__PURE__ */ import_react4.default.createElement(LoaderCircle, { size: 16, className: "tbea-spin" }), children);
+  return /* @__PURE__ */ import_react5.default.createElement("div", { className: "tbea-library-state", role: "status" }, /* @__PURE__ */ import_react5.default.createElement(LoaderCircle, { size: 16, className: "tbea-spin" }), children);
 }
 function Failure({ children, retry }) {
-  return /* @__PURE__ */ import_react4.default.createElement("div", { className: "tbea-library-state tbea-library-error", role: "alert" }, /* @__PURE__ */ import_react4.default.createElement("span", null, children), /* @__PURE__ */ import_react4.default.createElement("button", { type: "button", className: "tbea-library-button", onClick: retry }, /* @__PURE__ */ import_react4.default.createElement(RotateCcw, { size: 14 }), "\u91CD\u8BD5"));
+  return /* @__PURE__ */ import_react5.default.createElement("div", { className: "tbea-library-state tbea-library-error", role: "alert" }, /* @__PURE__ */ import_react5.default.createElement("span", null, children), /* @__PURE__ */ import_react5.default.createElement("button", { type: "button", className: "tbea-library-button", onClick: retry }, /* @__PURE__ */ import_react5.default.createElement(RotateCcw, { size: 14 }), "\u91CD\u8BD5"));
 }
 function LibraryBrowser({ bridge, pdfAssetPath }) {
   const directory = useLibraryRequest(bridge, "library-catalog", {}, "catalog");
   const libraries = directory.value?.libraries ?? [];
-  const [selection2, setSelection] = (0, import_react4.useState)("");
+  const [selection2, setSelection] = (0, import_react5.useState)("");
   const active = libraries.find((entry) => entry.id === selection2) ?? libraries[0];
-  return /* @__PURE__ */ import_react4.default.createElement("section", { className: "tbea-library", "aria-label": "\u77E5\u8BC6\u5E93\u76EE\u5F55" }, /* @__PURE__ */ import_react4.default.createElement("header", { className: "tbea-library-title" }, /* @__PURE__ */ import_react4.default.createElement(BookOpen, { size: 18, "aria-hidden": "true" }), /* @__PURE__ */ import_react4.default.createElement("h1", null, "\u77E5\u8BC6\u5E93\u76EE\u5F55"), directory.value?.demo && /* @__PURE__ */ import_react4.default.createElement("span", null, "\u6F14\u793A")), directory.loading ? /* @__PURE__ */ import_react4.default.createElement(Wait, null, "\u6B63\u5728\u8BFB\u53D6\u77E5\u8BC6\u5E93\u2026") : directory.error ? /* @__PURE__ */ import_react4.default.createElement(Failure, { retry: directory.retry }, directory.error) : !active ? /* @__PURE__ */ import_react4.default.createElement("div", { className: "tbea-library-state" }, "\u5F53\u524D\u9879\u76EE\u6CA1\u6709\u53EF\u67E5\u770B\u7684\u77E5\u8BC6\u5E93\u3002") : /* @__PURE__ */ import_react4.default.createElement(LibraryContents, { key: active.id, library: active, libraries, select: setSelection, bridge, pdfAssetPath }));
+  return /* @__PURE__ */ import_react5.default.createElement("section", { className: "tbea-library", "aria-label": "\u77E5\u8BC6\u5E93\u76EE\u5F55" }, /* @__PURE__ */ import_react5.default.createElement("header", { className: "tbea-library-title" }, /* @__PURE__ */ import_react5.default.createElement(BookOpen, { size: 18, "aria-hidden": "true" }), /* @__PURE__ */ import_react5.default.createElement("h1", null, "\u77E5\u8BC6\u5E93\u76EE\u5F55"), directory.value?.demo && /* @__PURE__ */ import_react5.default.createElement("span", null, "\u6F14\u793A")), directory.loading ? /* @__PURE__ */ import_react5.default.createElement(Wait, null, "\u6B63\u5728\u8BFB\u53D6\u77E5\u8BC6\u5E93\u2026") : directory.error ? /* @__PURE__ */ import_react5.default.createElement(Failure, { retry: directory.retry }, directory.error) : !active ? /* @__PURE__ */ import_react5.default.createElement("div", { className: "tbea-library-state" }, "\u5F53\u524D\u9879\u76EE\u6CA1\u6709\u53EF\u67E5\u770B\u7684\u77E5\u8BC6\u5E93\u3002") : /* @__PURE__ */ import_react5.default.createElement(LibraryContents, { key: active.id, library: active, libraries, select: setSelection, bridge, pdfAssetPath }));
 }
 function LibraryContents({ library, libraries, select, bridge, pdfAssetPath }) {
-  const [filter, setFilter] = (0, import_react4.useState)("");
-  const [selected, setSelected] = (0, import_react4.useState)();
+  const [filter, setFilter] = (0, import_react5.useState)("");
+  const [selected, setSelected] = (0, import_react5.useState)();
   const listing = useLibraryRequest(bridge, "library-documents", { libraryId: library.id }, library.id);
   const documents = listing.value?.documents ?? [];
   const visible = documents.filter((item) => item.name.toLowerCase().includes(filter.trim().toLowerCase()));
-  return /* @__PURE__ */ import_react4.default.createElement("div", { className: `tbea-library-layout${selected ? " tbea-library-has-selection" : ""}` }, /* @__PURE__ */ import_react4.default.createElement("aside", { className: "tbea-library-list", "aria-label": "\u77E5\u8BC6\u5E93\u6587\u6863" }, /* @__PURE__ */ import_react4.default.createElement("div", { className: "tbea-library-filters" }, /* @__PURE__ */ import_react4.default.createElement("label", { className: "tbea-library-field" }, /* @__PURE__ */ import_react4.default.createElement("span", null, "\u77E5\u8BC6\u5E93"), /* @__PURE__ */ import_react4.default.createElement("select", { value: library.id, onChange: (event) => select(event.target.value) }, libraries.map((entry) => /* @__PURE__ */ import_react4.default.createElement("option", { key: entry.id, value: entry.id }, entry.name)))), library.description && /* @__PURE__ */ import_react4.default.createElement("p", { className: "tbea-library-description" }, library.description), /* @__PURE__ */ import_react4.default.createElement("label", { className: "tbea-library-search" }, /* @__PURE__ */ import_react4.default.createElement(Search, { size: 15, "aria-hidden": "true" }), /* @__PURE__ */ import_react4.default.createElement("input", { type: "search", value: filter, onChange: (event) => setFilter(event.target.value), placeholder: "\u641C\u7D22\u6587\u6863\u540D\u79F0", "aria-label": "\u641C\u7D22\u6587\u6863\u540D\u79F0" })), listing.value && /* @__PURE__ */ import_react4.default.createElement("span", { className: "tbea-library-count" }, filter.trim() ? `\u627E\u5230 ${visible.length} \u4EFD\u6587\u6863` : `${documents.length} \u4EFD\u6587\u6863`)), listing.loading && /* @__PURE__ */ import_react4.default.createElement(Wait, null, "\u6B63\u5728\u8BFB\u53D6\u6587\u6863\u76EE\u5F55\u2026"), listing.error && /* @__PURE__ */ import_react4.default.createElement(Failure, { retry: listing.retry }, listing.error), listing.value && !listing.value.complete && /* @__PURE__ */ import_react4.default.createElement(Failure, { retry: listing.retry }, `\u5E73\u53F0\u76EE\u5F55\u672A\u53D6\u5168\uFF0C\u5DF2\u663E\u793A ${documents.length}${listing.value.total == null ? "" : `/${listing.value.total}`} \u4EFD\u6587\u6863\u3002`), listing.value && !visible.length && /* @__PURE__ */ import_react4.default.createElement("div", { className: "tbea-library-state" }, filter.trim() ? "\u6CA1\u6709\u627E\u5230\u5339\u914D\u7684\u6587\u6863\u3002" : "\u5F53\u524D\u6CA1\u6709\u53EF\u663E\u793A\u7684\u6587\u6863\u3002"), /* @__PURE__ */ import_react4.default.createElement("ul", { className: "tbea-library-items" }, visible.map((item) => /* @__PURE__ */ import_react4.default.createElement("li", { key: item.id }, /* @__PURE__ */ import_react4.default.createElement("button", { type: "button", "aria-current": selected?.id === item.id ? "true" : void 0, title: item.name, onClick: () => setSelected(item) }, /* @__PURE__ */ import_react4.default.createElement(FileText, { size: 16, "aria-hidden": "true" }), /* @__PURE__ */ import_react4.default.createElement("span", null, /* @__PURE__ */ import_react4.default.createElement("strong", null, item.name), /* @__PURE__ */ import_react4.default.createElement("small", null, [item.format?.toUpperCase() || "\u672A\u77E5\u683C\u5F0F", item.preview !== "available" ? states[item.preview] : void 0].filter(Boolean).join(" \xB7 ")))))))), selected ? /* @__PURE__ */ import_react4.default.createElement(DocumentReader, { key: selected.id, bridge, libraryId: library.id, documentInfo: selected, close: () => setSelected(void 0), pdfAssetPath }) : /* @__PURE__ */ import_react4.default.createElement("div", { className: "tbea-library-reader tbea-library-empty" }, /* @__PURE__ */ import_react4.default.createElement(FileText, { size: 24, "aria-hidden": "true" }), "\u9009\u62E9\u4E00\u4EFD\u6587\u6863\u67E5\u770B\u57FA\u672C\u4FE1\u606F\u548C\u539F\u6587\u3002"));
+  return /* @__PURE__ */ import_react5.default.createElement("div", { className: `tbea-library-layout${selected ? " tbea-library-has-selection" : ""}` }, /* @__PURE__ */ import_react5.default.createElement("aside", { className: "tbea-library-list", "aria-label": "\u77E5\u8BC6\u5E93\u6587\u6863" }, /* @__PURE__ */ import_react5.default.createElement("div", { className: "tbea-library-filters" }, /* @__PURE__ */ import_react5.default.createElement("label", { className: "tbea-library-field" }, /* @__PURE__ */ import_react5.default.createElement("span", null, "\u77E5\u8BC6\u5E93"), /* @__PURE__ */ import_react5.default.createElement("select", { value: library.id, onChange: (event) => select(event.target.value) }, libraries.map((entry) => /* @__PURE__ */ import_react5.default.createElement("option", { key: entry.id, value: entry.id }, entry.name)))), library.description && /* @__PURE__ */ import_react5.default.createElement("p", { className: "tbea-library-description" }, library.description), /* @__PURE__ */ import_react5.default.createElement("label", { className: "tbea-library-search" }, /* @__PURE__ */ import_react5.default.createElement(Search, { size: 15, "aria-hidden": "true" }), /* @__PURE__ */ import_react5.default.createElement("input", { type: "search", value: filter, onChange: (event) => setFilter(event.target.value), placeholder: "\u641C\u7D22\u6587\u6863\u540D\u79F0", "aria-label": "\u641C\u7D22\u6587\u6863\u540D\u79F0" })), listing.value && /* @__PURE__ */ import_react5.default.createElement("span", { className: "tbea-library-count" }, filter.trim() ? `\u627E\u5230 ${visible.length} \u4EFD\u6587\u6863` : `${documents.length} \u4EFD\u6587\u6863`)), listing.loading && /* @__PURE__ */ import_react5.default.createElement(Wait, null, "\u6B63\u5728\u8BFB\u53D6\u6587\u6863\u76EE\u5F55\u2026"), listing.error && /* @__PURE__ */ import_react5.default.createElement(Failure, { retry: listing.retry }, listing.error), listing.value && !listing.value.complete && /* @__PURE__ */ import_react5.default.createElement(Failure, { retry: listing.retry }, `\u5E73\u53F0\u76EE\u5F55\u672A\u53D6\u5168\uFF0C\u5DF2\u663E\u793A ${documents.length}${listing.value.total == null ? "" : `/${listing.value.total}`} \u4EFD\u6587\u6863\u3002`), listing.value && !visible.length && /* @__PURE__ */ import_react5.default.createElement("div", { className: "tbea-library-state" }, filter.trim() ? "\u6CA1\u6709\u627E\u5230\u5339\u914D\u7684\u6587\u6863\u3002" : "\u5F53\u524D\u6CA1\u6709\u53EF\u663E\u793A\u7684\u6587\u6863\u3002"), /* @__PURE__ */ import_react5.default.createElement("ul", { className: "tbea-library-items" }, visible.map((item) => /* @__PURE__ */ import_react5.default.createElement("li", { key: item.id }, /* @__PURE__ */ import_react5.default.createElement("button", { type: "button", "aria-current": selected?.id === item.id ? "true" : void 0, title: item.name, onClick: () => setSelected(item) }, /* @__PURE__ */ import_react5.default.createElement(FileText, { size: 16, "aria-hidden": "true" }), /* @__PURE__ */ import_react5.default.createElement("span", null, /* @__PURE__ */ import_react5.default.createElement("strong", null, item.name), /* @__PURE__ */ import_react5.default.createElement("small", null, [item.format?.toUpperCase() || "\u672A\u77E5\u683C\u5F0F", item.preview !== "available" ? states[item.preview] : void 0].filter(Boolean).join(" \xB7 ")))))))), selected ? /* @__PURE__ */ import_react5.default.createElement(DocumentReader, { key: selected.id, bridge, libraryId: library.id, documentInfo: selected, close: () => setSelected(void 0), pdfAssetPath }) : /* @__PURE__ */ import_react5.default.createElement("div", { className: "tbea-library-reader tbea-library-empty" }, /* @__PURE__ */ import_react5.default.createElement(FileText, { size: 24, "aria-hidden": "true" }), "\u9009\u62E9\u4E00\u4EFD\u6587\u6863\u67E5\u770B\u57FA\u672C\u4FE1\u606F\u548C\u539F\u6587\u3002"));
 }
 function formatSize(bytes) {
   if (bytes < 1024) return `${bytes} B`;
@@ -24095,8 +24276,8 @@ function DocumentReader({ bridge, libraryId, documentInfo, close, requestPreview
   const canOpen = requestPreview ?? preview === "available";
   const state = useLibraryRequest(bridge, "library-open", { libraryId, documentId: id }, canOpen ? JSON.stringify([libraryId, id]) : void 0);
   const opened = state.value;
-  const [progress, setProgress] = (0, import_react4.useState)(null);
-  (0, import_react4.useEffect)(() => {
+  const [progress, setProgress] = (0, import_react5.useState)(null);
+  (0, import_react5.useEffect)(() => {
     if (!state.loading) return;
     setProgress(null);
     const controller = new AbortController();
@@ -24123,7 +24304,7 @@ function DocumentReader({ bridge, libraryId, documentInfo, close, requestPreview
     "preparing-text": "\u6B63\u5728\u6392\u7248\u539F\u6587\u2026"
   };
   const facts = [format?.toUpperCase(), bytes != null ? formatSize(bytes) : void 0, createdAt ? new Date(createdAt).toLocaleDateString("zh-CN") : void 0, status ? statusLabels[status] ?? status : void 0].filter(Boolean);
-  return /* @__PURE__ */ import_react4.default.createElement("article", { className: "tbea-library-reader", "aria-label": "\u539F\u6587\u9884\u89C8" }, /* @__PURE__ */ import_react4.default.createElement("div", { className: "tbea-library-reader-heading" }, /* @__PURE__ */ import_react4.default.createElement("button", { type: "button", className: "tbea-library-button", "aria-label": backLabel, onClick: close }, /* @__PURE__ */ import_react4.default.createElement(ArrowLeft, { size: 16 })), /* @__PURE__ */ import_react4.default.createElement("div", null, /* @__PURE__ */ import_react4.default.createElement("h2", null, name), facts.length > 0 && /* @__PURE__ */ import_react4.default.createElement("p", null, facts.join(" \xB7 ")))), state.loading && /* @__PURE__ */ import_react4.default.createElement(
+  return /* @__PURE__ */ import_react5.default.createElement("article", { className: "tbea-library-reader", "aria-label": "\u539F\u6587\u9884\u89C8" }, /* @__PURE__ */ import_react5.default.createElement("div", { className: "tbea-library-reader-heading" }, /* @__PURE__ */ import_react5.default.createElement("button", { type: "button", className: "tbea-library-button", "aria-label": backLabel, onClick: close }, /* @__PURE__ */ import_react5.default.createElement(ArrowLeft, { size: 16 })), /* @__PURE__ */ import_react5.default.createElement("div", null, /* @__PURE__ */ import_react5.default.createElement("h2", null, name), facts.length > 0 && /* @__PURE__ */ import_react5.default.createElement("p", null, facts.join(" \xB7 ")))), state.loading && /* @__PURE__ */ import_react5.default.createElement(
     PreviewMeter,
     {
       key: progress?.phase,
@@ -24132,48 +24313,52 @@ function DocumentReader({ bridge, libraryId, documentInfo, close, requestPreview
       received: progress?.received,
       total: progress?.total
     }
-  ), state.error && /* @__PURE__ */ import_react4.default.createElement(Failure, { retry: state.retry }, state.error), preview && preview !== "available" && /* @__PURE__ */ import_react4.default.createElement("div", { className: "tbea-library-state" }, states[preview], "\u3002"), opened && (opened.pdfBytes ? /* @__PURE__ */ import_react4.default.createElement(PdfViewer, { key: opened.previewId, bridge, previewId: opened.previewId, bytes: opened.pdfBytes, assetPath: pdfAssetPath, restart: state.retry }) : opened.html !== void 0 && /* @__PURE__ */ import_react4.default.createElement(TextPreview, { key: opened.previewId, bridge, previewId: opened.previewId, html: opened.html })));
+  ), state.error && /* @__PURE__ */ import_react5.default.createElement(Failure, { retry: state.retry }, state.error), preview && preview !== "available" && /* @__PURE__ */ import_react5.default.createElement("div", { className: "tbea-library-state" }, preview === "office-unavailable" ? officeUnavailable : states[preview], "\u3002"), opened && (opened.pdfBytes ? /* @__PURE__ */ import_react5.default.createElement(PdfViewer, { key: opened.previewId, bridge, previewId: opened.previewId, bytes: opened.pdfBytes, assetPath: pdfAssetPath, restart: state.retry }) : opened.sheetBytes && opened.sheetFormat ? /* @__PURE__ */ import_react5.default.createElement(import_react5.Suspense, { fallback: /* @__PURE__ */ import_react5.default.createElement(PreviewMeter, { label: "\u6B63\u5728\u8BFB\u53D6\u5DE5\u4F5C\u8868\u2026" }) }, /* @__PURE__ */ import_react5.default.createElement(SpreadsheetViewer2, { key: opened.previewId, bridge, previewId: opened.previewId, bytes: opened.sheetBytes, format: opened.sheetFormat, assetPath: pdfAssetPath, restart: state.retry })) : opened.html !== void 0 && /* @__PURE__ */ import_react5.default.createElement(TextPreview, { key: opened.previewId, bridge, previewId: opened.previewId, html: opened.html })));
 }
 function TextPreview({ bridge, previewId, html }) {
-  const started = (0, import_react4.useRef)(performance.now());
-  (0, import_react4.useEffect)(() => {
+  const started = (0, import_react5.useRef)(performance.now());
+  (0, import_react5.useEffect)(() => {
     const frame = requestAnimationFrame(() => {
       void bridge("library-preview-result", { previewId, status: "ready", elapsedMs: Math.round(performance.now() - started.current) }, AbortSignal.timeout(5e3)).catch(() => {
       });
     });
     return () => cancelAnimationFrame(frame);
   }, [bridge, previewId]);
-  return /* @__PURE__ */ import_react4.default.createElement("div", { "aria-label": "\u6587\u672C\u539F\u6587\u9884\u89C8", className: "tbea-library-text", tabIndex: 0, dangerouslySetInnerHTML: { __html: html } });
+  return /* @__PURE__ */ import_react5.default.createElement("div", { "aria-label": "\u6587\u672C\u539F\u6587\u9884\u89C8", className: "tbea-library-text", tabIndex: 0, dangerouslySetInnerHTML: { __html: html } });
 }
 
 // plugin/src/cited-documents-view.tsx
-var import_react5 = __toESM(require_react(), 1);
+var import_react6 = __toESM(require_react(), 1);
+
+// src/version.ts
+var SERVICE_VERSION = "0.11.16";
 
 // plugin/src/client.jsx
 function KnowledgeSelection({ selection: selection2, selectionSessionId }) {
-  const subscribe = (0, import_react6.useCallback)((listener) => selection2.subscribe(selectionSessionId, listener), [selection2, selectionSessionId]);
-  const snapshot = (0, import_react6.useCallback)(() => selection2.get(selectionSessionId), [selection2, selectionSessionId]);
-  const state = (0, import_react6.useSyncExternalStore)(subscribe, snapshot, snapshot);
+  const subscribe = (0, import_react7.useCallback)((listener) => selection2.subscribe(selectionSessionId, listener), [selection2, selectionSessionId]);
+  const snapshot = (0, import_react7.useCallback)(() => selection2.get(selectionSessionId), [selection2, selectionSessionId]);
+  const state = (0, import_react7.useSyncExternalStore)(subscribe, snapshot, snapshot);
   const serviceError = state.servicePhase === "error";
   const serviceStopped = state.servicePhase === "stopped";
+  const differentVersion = state.selected && state.servicePhase === "ready" && state.pluginVersion !== SERVICE_VERSION;
   if (!state.selected && !state.error && !state.pending && !serviceError && !serviceStopped && state.servicePhase !== "starting") return null;
-  return /* @__PURE__ */ import_react6.default.createElement("div", { className: "tbea-selection-dock" }, /* @__PURE__ */ import_react6.default.createElement("div", { className: "tbea-selection", "aria-label": "\u516C\u53F8\u77E5\u8BC6\u5E93\u6765\u6E90\u9009\u62E9" }, state.selected ? /* @__PURE__ */ import_react6.default.createElement("span", { className: "tbea-selection-chip" }, /* @__PURE__ */ import_react6.default.createElement(BookOpen, { size: 14 }), /* @__PURE__ */ import_react6.default.createElement("span", null, "\u516C\u53F8\u77E5\u8BC6\u5E93"), /* @__PURE__ */ import_react6.default.createElement("button", { type: "button", "aria-label": "\u53D6\u6D88\u516C\u53F8\u77E5\u8BC6\u5E93", title: state.autoRetrieveKnowledge === false ? "\u53D6\u6D88\u540E\uFF0C\u9700\u624B\u52A8\u9009\u62E9\u624D\u4F1A\u67E5\u8BE2\u516C\u53F8\u77E5\u8BC6\u5E93" : "\u53D6\u6D88\u540E\u7531\u6A21\u578B\u6309\u9700\u5224\u65AD\u662F\u5426\u67E5\u5E93", disabled: state.pending, onClick: () => {
+  return /* @__PURE__ */ import_react7.default.createElement("div", { className: "tbea-selection-dock" }, /* @__PURE__ */ import_react7.default.createElement("div", { className: "tbea-selection", "aria-label": "\u516C\u53F8\u77E5\u8BC6\u5E93\u6765\u6E90\u9009\u62E9" }, state.selected ? /* @__PURE__ */ import_react7.default.createElement("span", { className: "tbea-selection-chip", title: `\u516C\u53F8\u77E5\u8BC6\u5E93\u524D\u7AEF ${SERVICE_VERSION} \xB7 Host ${state.pluginVersion ?? "\u7248\u672C\u672A\u77E5"}` }, /* @__PURE__ */ import_react7.default.createElement(BookOpen, { size: 14 }), /* @__PURE__ */ import_react7.default.createElement("span", null, "\u516C\u53F8\u77E5\u8BC6\u5E93"), /* @__PURE__ */ import_react7.default.createElement("button", { type: "button", "aria-label": "\u53D6\u6D88\u516C\u53F8\u77E5\u8BC6\u5E93", title: state.autoRetrieveKnowledge === false ? "\u53D6\u6D88\u540E\uFF0C\u9700\u624B\u52A8\u9009\u62E9\u624D\u4F1A\u67E5\u8BE2\u516C\u53F8\u77E5\u8BC6\u5E93" : "\u53D6\u6D88\u540E\u7531\u6A21\u578B\u6309\u9700\u5224\u65AD\u662F\u5426\u67E5\u5E93", disabled: state.pending, onClick: () => {
     void selection2.select(selectionSessionId, false);
-  } }, /* @__PURE__ */ import_react6.default.createElement(X, { size: 13 }))) : null, state.pending || state.phase === "searching" ? /* @__PURE__ */ import_react6.default.createElement("span", { className: "tbea-selection-status", role: "status" }, /* @__PURE__ */ import_react6.default.createElement(LoaderCircle, { size: 13, className: "tbea-spin" }), state.pending ? state.pendingAction === "service" ? "\u6B63\u5728\u542F\u52A8\u516C\u53F8\u77E5\u8BC6\u670D\u52A1\u2026" : "\u6B63\u5728\u4FDD\u5B58\u9009\u62E9\u2026" : state.message) : null, state.phase === "partial" && !state.pending ? /* @__PURE__ */ import_react6.default.createElement("span", { className: "tbea-selection-status", role: "status" }, state.message) : null, state.servicePhase === "starting" && !state.pending ? /* @__PURE__ */ import_react6.default.createElement("span", { className: "tbea-selection-status", role: "status" }, /* @__PURE__ */ import_react6.default.createElement(LoaderCircle, { size: 13, className: "tbea-spin" }), "\u6B63\u5728\u542F\u52A8\u516C\u53F8\u77E5\u8BC6\u670D\u52A1\u2026") : null, serviceStopped ? /* @__PURE__ */ import_react6.default.createElement("span", { className: "tbea-selection-status", role: "status" }, state.serviceMessage) : null, state.error || serviceError || state.phase === "error" || state.phase === "stopped" ? /* @__PURE__ */ import_react6.default.createElement("span", { className: "tbea-selection-error", role: "alert" }, state.error || (serviceError ? state.serviceMessage : state.message), serviceError ? /* @__PURE__ */ import_react6.default.createElement("button", { className: "tbea-icon", type: "button", title: "\u91CD\u8BD5\u542F\u52A8\u77E5\u8BC6\u670D\u52A1", "aria-label": "\u91CD\u8BD5\u542F\u52A8\u77E5\u8BC6\u670D\u52A1", disabled: state.pending, onClick: () => {
+  } }, /* @__PURE__ */ import_react7.default.createElement(X, { size: 13 }))) : null, differentVersion ? /* @__PURE__ */ import_react7.default.createElement("span", { className: "tbea-selection-error", role: "alert" }, "\u516C\u53F8\u77E5\u8BC6\u5E93\u524D\u7AEF\u548C\u670D\u52A1\u7248\u672C\u4E0D\u4E00\u81F4\uFF0C\u8BF7\u4ECE\u6258\u76D8\u5B8C\u5168\u9000\u51FA\u5E76\u91CD\u65B0\u6253\u5F00\u5320\u5B9D\u3002") : null, state.pending || state.phase === "searching" ? /* @__PURE__ */ import_react7.default.createElement("span", { className: "tbea-selection-status", role: "status" }, /* @__PURE__ */ import_react7.default.createElement(LoaderCircle, { size: 13, className: "tbea-spin" }), state.pending ? state.pendingAction === "service" ? "\u6B63\u5728\u542F\u52A8\u516C\u53F8\u77E5\u8BC6\u670D\u52A1\u2026" : "\u6B63\u5728\u4FDD\u5B58\u9009\u62E9\u2026" : state.message) : null, state.phase === "partial" && !state.pending ? /* @__PURE__ */ import_react7.default.createElement("span", { className: "tbea-selection-status", role: "status" }, state.message) : null, state.servicePhase === "starting" && !state.pending ? /* @__PURE__ */ import_react7.default.createElement("span", { className: "tbea-selection-status", role: "status" }, /* @__PURE__ */ import_react7.default.createElement(LoaderCircle, { size: 13, className: "tbea-spin" }), "\u6B63\u5728\u542F\u52A8\u516C\u53F8\u77E5\u8BC6\u670D\u52A1\u2026") : null, serviceStopped ? /* @__PURE__ */ import_react7.default.createElement("span", { className: "tbea-selection-status", role: "status" }, state.serviceMessage) : null, state.error || serviceError || state.phase === "error" || state.phase === "stopped" ? /* @__PURE__ */ import_react7.default.createElement("span", { className: "tbea-selection-error", role: "alert" }, state.error || (serviceError ? state.serviceMessage : state.message), serviceError ? /* @__PURE__ */ import_react7.default.createElement("button", { className: "tbea-icon", type: "button", title: "\u91CD\u8BD5\u542F\u52A8\u77E5\u8BC6\u670D\u52A1", "aria-label": "\u91CD\u8BD5\u542F\u52A8\u77E5\u8BC6\u670D\u52A1", disabled: state.pending, onClick: () => {
     void selection2.retry(selectionSessionId);
-  } }, /* @__PURE__ */ import_react6.default.createElement(RefreshCw, { size: 16 })) : null) : null));
+  } }, /* @__PURE__ */ import_react7.default.createElement(RefreshCw, { size: 16 })) : null) : null));
 }
-function Sources({ view, bridge }) {
-  const panelId = (0, import_react6.useId)();
-  const [open, setOpen] = (0, import_react6.useState)(false);
-  const [snapshot, setSnapshot] = (0, import_react6.useState)(null);
-  const [error, setError] = (0, import_react6.useState)("");
-  const [loading, setLoading] = (0, import_react6.useState)(false);
-  const [revision, setRevision] = (0, import_react6.useState)(0);
+function Sources({ view, bridge, initialSnapshot, focusCitationId }) {
+  const panelId = (0, import_react7.useId)();
+  const [open, setOpen] = (0, import_react7.useState)(Boolean(focusCitationId));
+  const [snapshot, setSnapshot] = (0, import_react7.useState)(initialSnapshot ?? null);
+  const [error, setError] = (0, import_react7.useState)("");
+  const [loading, setLoading] = (0, import_react7.useState)(false);
+  const [revision, setRevision] = (0, import_react7.useState)(0);
   const coverage = view.coverage || snapshot?.coverage;
   const partial = coverage && coverage.completed < coverage.requested;
-  (0, import_react6.useEffect)(() => {
-    if (!open) return;
+  (0, import_react7.useEffect)(() => {
+    if (!open || initialSnapshot && revision === 0) return;
     const controller = new AbortController();
     setLoading(true);
     setError("");
@@ -24185,12 +24370,17 @@ function Sources({ view, bridge }) {
       if (!controller.signal.aborted) setLoading(false);
     });
     return () => controller.abort();
-  }, [open, view.snapshotId, bridge, revision]);
-  return /* @__PURE__ */ import_react6.default.createElement("section", { className: "tbea-sources", "aria-label": "\u516C\u53F8\u77E5\u8BC6\u53C2\u8003\u6765\u6E90" }, /* @__PURE__ */ import_react6.default.createElement("button", { className: "tbea-source-toggle", type: "button", "aria-expanded": open, "aria-controls": panelId, onClick: () => setOpen(!open) }, open ? /* @__PURE__ */ import_react6.default.createElement(ChevronDown, { size: 16 }) : /* @__PURE__ */ import_react6.default.createElement(ChevronRight, { size: 16 }), /* @__PURE__ */ import_react6.default.createElement(BookOpen, { size: 16 }), /* @__PURE__ */ import_react6.default.createElement("strong", null, "\u53C2\u8003\u6765\u6E90"), /* @__PURE__ */ import_react6.default.createElement("span", { className: "tbea-count" }, view.count ?? "\u2014"), /* @__PURE__ */ import_react6.default.createElement("span", { className: "tbea-query", title: view.query }, view.query), view.mode === "mock" ? /* @__PURE__ */ import_react6.default.createElement("span", { className: "tbea-demo" }, "\u6F14\u793A") : null, partial ? /* @__PURE__ */ import_react6.default.createElement("span", { className: "tbea-count", title: "\u90E8\u5206\u77E5\u8BC6\u5E93\u672A\u5B8C\u6210\u68C0\u7D22" }, "\u5DF2\u67E5 ", coverage.completed, "/", coverage.requested, " \u5E93") : null, coverage && !partial && coverage.available > coverage.requested ? /* @__PURE__ */ import_react6.default.createElement("span", { className: "tbea-count", title: "\u5DF2\u4ECE\u76F8\u5173\u6388\u6743\u5E93\u83B7\u5F97\u8BC1\u636E" }, "\u4F18\u5148\u67E5 ", coverage.requested, "/", coverage.available, " \u5E93") : null, view.evidenceStatus === "partial" ? /* @__PURE__ */ import_react6.default.createElement("span", { className: "tbea-count", title: "\u53EA\u627E\u5230\u90E8\u5206\u6240\u95EE\u4E8B\u9879\u7684\u4F9D\u636E" }, "\u90E8\u5206\u6709\u4F9D\u636E") : null), open ? /* @__PURE__ */ import_react6.default.createElement("div", { className: "tbea-source-body", id: panelId, "aria-busy": loading }, loading ? /* @__PURE__ */ import_react6.default.createElement("div", { className: "tbea-status", role: "status" }, /* @__PURE__ */ import_react6.default.createElement(LoaderCircle, { size: 16, className: "tbea-spin" }), "\u6B63\u5728\u8BFB\u53D6\u6765\u6E90\u2026") : null, error ? /* @__PURE__ */ import_react6.default.createElement("div", { className: "tbea-error", role: "alert" }, error, /* @__PURE__ */ import_react6.default.createElement("button", { type: "button", className: "tbea-icon", title: "\u91CD\u65B0\u8BFB\u53D6\u6765\u6E90", onClick: () => setRevision((r) => r + 1) }, /* @__PURE__ */ import_react6.default.createElement(RefreshCw, { size: 15 }))) : null, !loading && !error && snapshot?.citations.length === 0 ? /* @__PURE__ */ import_react6.default.createElement("p", { className: "tbea-empty" }, view.clarification || (snapshot.retrievalSkipped ? "\u672C\u6B21\u95EE\u9898\u65E0\u9700\u67E5\u8BE2\u516C\u53F8\u77E5\u8BC6\u5E93\u3002" : partial ? "\u672C\u6B21\u68C0\u7D22\u8303\u56F4\u4E0D\u5B8C\u6574\uFF0C\u5DF2\u68C0\u7D22\u7684\u77E5\u8BC6\u5E93\u4E2D\u672A\u627E\u5230\u76F8\u5173\u4F9D\u636E\uFF0C\u53EF\u91CD\u65B0\u53D1\u9001\u95EE\u9898\u3002" : "\u672A\u68C0\u7D22\u5230\u76F8\u5173\u4F9D\u636E\uFF0C\u8BF7\u8865\u5145\u4EA7\u54C1\u3001\u5730\u533A\u6216\u6807\u51C6\u7248\u672C\u7B49\u6761\u4EF6\u3002")) : null, !loading && !error && snapshot?.citations.map((c) => /* @__PURE__ */ import_react6.default.createElement("div", { className: "tbea-citation-group", key: c.citationId }, /* @__PURE__ */ import_react6.default.createElement(Citation, { citation: c, snapshotId: view.snapshotId, bridge, onRefresh: setSnapshot }), c.equivalentSources?.length ? /* @__PURE__ */ import_react6.default.createElement(EquivalentSources, { sources: c.equivalentSources, snapshotId: view.snapshotId, bridge, onRefresh: setSnapshot }) : null))) : null);
+  }, [open, view.snapshotId, bridge, revision, initialSnapshot]);
+  const focus = focusCitationId && snapshot?.citations.flatMap((c) => [c, ...c.equivalentSources ?? []]).find((c) => c.citationId === focusCitationId);
+  return /* @__PURE__ */ import_react7.default.createElement("section", { className: "tbea-sources", "aria-label": "\u516C\u53F8\u77E5\u8BC6\u53C2\u8003\u6765\u6E90" }, /* @__PURE__ */ import_react7.default.createElement("button", { className: "tbea-source-toggle", type: "button", "aria-expanded": open, "aria-controls": panelId, onClick: () => setOpen(!open) }, open ? /* @__PURE__ */ import_react7.default.createElement(ChevronDown, { size: 16 }) : /* @__PURE__ */ import_react7.default.createElement(ChevronRight, { size: 16 }), /* @__PURE__ */ import_react7.default.createElement(BookOpen, { size: 16 }), /* @__PURE__ */ import_react7.default.createElement("strong", null, "\u53C2\u8003\u6765\u6E90"), /* @__PURE__ */ import_react7.default.createElement("span", { className: "tbea-count" }, view.count ?? "\u2014"), /* @__PURE__ */ import_react7.default.createElement("span", { className: "tbea-query", title: view.query }, view.query), view.mode === "mock" ? /* @__PURE__ */ import_react7.default.createElement("span", { className: "tbea-demo" }, "\u6F14\u793A") : null, partial ? /* @__PURE__ */ import_react7.default.createElement("span", { className: "tbea-count", title: "\u90E8\u5206\u77E5\u8BC6\u5E93\u672A\u5B8C\u6210\u68C0\u7D22" }, "\u5DF2\u67E5 ", coverage.completed, "/", coverage.requested, " \u5E93") : null, coverage && !partial && coverage.available > coverage.requested ? /* @__PURE__ */ import_react7.default.createElement("span", { className: "tbea-count", title: "\u5DF2\u4ECE\u76F8\u5173\u6388\u6743\u5E93\u83B7\u5F97\u8BC1\u636E" }, "\u4F18\u5148\u67E5 ", coverage.requested, "/", coverage.available, " \u5E93") : null, view.evidenceStatus === "partial" ? /* @__PURE__ */ import_react7.default.createElement("span", { className: "tbea-count", title: "\u53EA\u627E\u5230\u90E8\u5206\u6240\u95EE\u4E8B\u9879\u7684\u4F9D\u636E" }, "\u90E8\u5206\u6709\u4F9D\u636E") : null), open ? /* @__PURE__ */ import_react7.default.createElement("div", { className: "tbea-source-body", id: panelId, "aria-busy": loading }, loading ? /* @__PURE__ */ import_react7.default.createElement("div", { className: "tbea-status", role: "status" }, /* @__PURE__ */ import_react7.default.createElement(LoaderCircle, { size: 16, className: "tbea-spin" }), "\u6B63\u5728\u8BFB\u53D6\u6765\u6E90\u2026") : null, error ? /* @__PURE__ */ import_react7.default.createElement("div", { className: "tbea-error", role: "alert" }, error, /* @__PURE__ */ import_react7.default.createElement("button", { type: "button", className: "tbea-icon", title: "\u91CD\u65B0\u8BFB\u53D6\u6765\u6E90", onClick: () => setRevision((r) => r + 1) }, /* @__PURE__ */ import_react7.default.createElement(RefreshCw, { size: 15 }))) : null, !loading && !error && snapshot?.citations.length === 0 ? /* @__PURE__ */ import_react7.default.createElement("p", { className: "tbea-empty" }, view.clarification || (snapshot.retrievalSkipped ? "\u672C\u6B21\u95EE\u9898\u65E0\u9700\u67E5\u8BE2\u516C\u53F8\u77E5\u8BC6\u5E93\u3002" : partial ? "\u672C\u6B21\u68C0\u7D22\u8303\u56F4\u4E0D\u5B8C\u6574\uFF0C\u5DF2\u68C0\u7D22\u7684\u77E5\u8BC6\u5E93\u4E2D\u672A\u627E\u5230\u76F8\u5173\u4F9D\u636E\uFF0C\u53EF\u91CD\u65B0\u53D1\u9001\u95EE\u9898\u3002" : "\u672A\u68C0\u7D22\u5230\u76F8\u5173\u4F9D\u636E\uFF0C\u8BF7\u8865\u5145\u4EA7\u54C1\u3001\u5730\u533A\u6216\u6807\u51C6\u7248\u672C\u7B49\u6761\u4EF6\u3002")) : null, !loading && !error && focus && /* @__PURE__ */ import_react7.default.createElement("div", { className: "tbea-citation-group tbea-citation-focused", "aria-label": "\u547D\u4E2D\u5207\u7247" }, /* @__PURE__ */ import_react7.default.createElement(Citation, { citation: focus, snapshotId: view.snapshotId, bridge, onRefresh: setSnapshot, initiallyExpanded: true })), !loading && !error && snapshot?.citations.map((c) => {
+    const equivalents = c.equivalentSources?.filter((source) => source.citationId !== focusCitationId);
+    if (c.citationId === focusCitationId && !equivalents?.length) return null;
+    return /* @__PURE__ */ import_react7.default.createElement("div", { className: "tbea-citation-group", key: c.citationId }, c.citationId !== focusCitationId && /* @__PURE__ */ import_react7.default.createElement(Citation, { citation: c, snapshotId: view.snapshotId, bridge, onRefresh: setSnapshot }), equivalents?.length ? /* @__PURE__ */ import_react7.default.createElement(EquivalentSources, { sources: equivalents, snapshotId: view.snapshotId, bridge, onRefresh: setSnapshot }) : null);
+  })) : null);
 }
 function EquivalentSources({ sources, snapshotId, bridge, onRefresh }) {
-  const [open, setOpen] = (0, import_react6.useState)(false);
-  return /* @__PURE__ */ import_react6.default.createElement("details", { className: "tbea-related-sources", onToggle: (event) => setOpen(event.currentTarget.open) }, /* @__PURE__ */ import_react6.default.createElement("summary", null, "\u5176\u4ED6\u6765\u6E90\uFF08", sources.length, "\uFF09"), open ? sources.map((source) => /* @__PURE__ */ import_react6.default.createElement(Citation, { key: source.citationId, citation: source, snapshotId, bridge, onRefresh })) : null);
+  const [open, setOpen] = (0, import_react7.useState)(false);
+  return /* @__PURE__ */ import_react7.default.createElement("details", { className: "tbea-related-sources", onToggle: (event) => setOpen(event.currentTarget.open) }, /* @__PURE__ */ import_react7.default.createElement("summary", null, "\u5176\u4ED6\u6765\u6E90\uFF08", sources.length, "\uFF09"), open ? sources.map((source) => /* @__PURE__ */ import_react7.default.createElement(Citation, { key: source.citationId, citation: source, snapshotId, bridge, onRefresh })) : null);
 }
 async function copyText(value) {
   if (navigator.clipboard?.writeText) return navigator.clipboard.writeText(value);
@@ -24204,17 +24394,17 @@ async function copyText(value) {
   input.remove();
   if (!ok) throw new Error("\u590D\u5236\u5931\u8D25\uFF0C\u8BF7\u9009\u4E2D\u6587\u5B57\u540E\u6309 Ctrl+C");
 }
-function Citation({ citation: c, snapshotId, bridge, onRefresh }) {
-  const contentId = (0, import_react6.useId)();
-  const detailId = (0, import_react6.useId)();
+function Citation({ citation: c, snapshotId, bridge, onRefresh, initiallyExpanded = false }) {
+  const contentId = (0, import_react7.useId)();
+  const detailId = (0, import_react7.useId)();
   const hasPreview = c.content.length > 220 || c.content.split(/\r?\n/).length > 5;
-  const [expanded, setExpanded] = (0, import_react6.useState)(false);
-  const [detail, setDetail] = (0, import_react6.useState)(false);
-  const [busy, setBusy] = (0, import_react6.useState)(false);
-  const [error, setError] = (0, import_react6.useState)("");
-  const [copied, setCopied] = (0, import_react6.useState)(false);
-  const timer = (0, import_react6.useRef)();
-  (0, import_react6.useEffect)(() => () => clearTimeout(timer.current), []);
+  const [expanded, setExpanded] = (0, import_react7.useState)(initiallyExpanded);
+  const [detail, setDetail] = (0, import_react7.useState)(false);
+  const [busy, setBusy] = (0, import_react7.useState)(false);
+  const [error, setError] = (0, import_react7.useState)("");
+  const [copied, setCopied] = (0, import_react7.useState)(false);
+  const timer = (0, import_react7.useRef)();
+  (0, import_react7.useEffect)(() => () => clearTimeout(timer.current), []);
   async function refresh() {
     setBusy(true);
     setError("");
@@ -24236,20 +24426,20 @@ function Citation({ citation: c, snapshotId, bridge, onRefresh }) {
       setError(e.message);
     }
   }
-  return /* @__PURE__ */ import_react6.default.createElement("article", { className: "tbea-citation", id: `tbea-${c.citationId}` }, /* @__PURE__ */ import_react6.default.createElement("div", { className: "tbea-citation-head" }, /* @__PURE__ */ import_react6.default.createElement(FileText, { size: 16 }), /* @__PURE__ */ import_react6.default.createElement("strong", { title: c.documentName }, c.documentName), /* @__PURE__ */ import_react6.default.createElement("button", { className: "tbea-icon", type: "button", title: copied ? "\u5DF2\u590D\u5236" : "\u590D\u5236\u5207\u7247\u5185\u5BB9", "aria-label": copied ? "\u5DF2\u590D\u5236" : "\u590D\u5236\u5207\u7247\u5185\u5BB9", onClick: copy }, copied ? /* @__PURE__ */ import_react6.default.createElement(Check, { size: 16 }) : /* @__PURE__ */ import_react6.default.createElement(Copy, { size: 16 })), /* @__PURE__ */ import_react6.default.createElement("span", { className: "tbea-sr-only", role: "status" }, copied ? "\u5207\u7247\u5185\u5BB9\u5DF2\u590D\u5236" : "")), /* @__PURE__ */ import_react6.default.createElement("div", { className: "tbea-meta" }, /* @__PURE__ */ import_react6.default.createElement("span", { className: "tbea-citation-id", title: "\u56DE\u7B54\u5BF9\u5E94\u7684\u5F15\u7528\u7F16\u53F7" }, c.citationId), /* @__PURE__ */ import_react6.default.createElement("span", null, c.knowledgeBaseName), c.page ? /* @__PURE__ */ import_react6.default.createElement("span", null, "\u7B2C ", c.page, " \u9875") : null, c.documentVersion ? /* @__PURE__ */ import_react6.default.createElement("span", null, "\u7248\u672C ", c.documentVersion) : null, c.effectiveDate ? /* @__PURE__ */ import_react6.default.createElement("span", null, c.effectiveDate, " \u751F\u6548") : null, typeof c.score === "number" ? /* @__PURE__ */ import_react6.default.createElement("span", { title: "\u68C0\u7D22\u76F8\u5173\u5206\u6570\uFF0C\u4E0D\u4EE3\u8868\u7B54\u6848\u6B63\u786E\u7387" }, "\u76F8\u5173\u5206\u6570 ", c.score.toFixed(3)) : null), c.content ? /* @__PURE__ */ import_react6.default.createElement("p", { id: contentId, className: `tbea-content ${hasPreview && !expanded ? "tbea-collapsed" : ""}` }, c.content) : null, hasPreview ? /* @__PURE__ */ import_react6.default.createElement("button", { className: "tbea-text-button", type: "button", "aria-expanded": expanded, "aria-controls": contentId, onClick: () => setExpanded(!expanded) }, expanded ? "\u6536\u8D77\u6587\u5B57" : "\u5C55\u5F00\u6587\u5B57") : null, c.tables.map((table, index) => /* @__PURE__ */ import_react6.default.createElement(Table, { key: index, table, index })), c.images.length ? /* @__PURE__ */ import_react6.default.createElement("div", { className: "tbea-gallery" }, c.images.map((image) => /* @__PURE__ */ import_react6.default.createElement(ImagePreview, { key: image.id, image, snapshotId, bridge }))) : null, /* @__PURE__ */ import_react6.default.createElement("div", { className: "tbea-citation-actions" }, /* @__PURE__ */ import_react6.default.createElement("button", { className: "tbea-text-button", type: "button", "aria-expanded": detail, "aria-controls": detailId, onClick: () => setDetail(!detail) }, detail ? "\u6536\u8D77\u5207\u7247\u8BE6\u60C5" : "\u5207\u7247\u8BE6\u60C5"), /* @__PURE__ */ import_react6.default.createElement("button", { className: "tbea-icon", type: "button", disabled: busy, title: "\u91CD\u65B0\u83B7\u53D6\u5E73\u53F0\u5207\u7247\u8BE6\u60C5", "aria-label": "\u91CD\u65B0\u83B7\u53D6\u5E73\u53F0\u5207\u7247\u8BE6\u60C5", onClick: refresh }, busy ? /* @__PURE__ */ import_react6.default.createElement(LoaderCircle, { size: 16, className: "tbea-spin" }) : /* @__PURE__ */ import_react6.default.createElement(RefreshCw, { size: 16 }))), detail ? /* @__PURE__ */ import_react6.default.createElement("dl", { className: "tbea-details", id: detailId }, /* @__PURE__ */ import_react6.default.createElement("dt", null, "\u6587\u6863"), /* @__PURE__ */ import_react6.default.createElement("dd", null, c.documentName), /* @__PURE__ */ import_react6.default.createElement("dt", null, "\u77E5\u8BC6\u5E93"), /* @__PURE__ */ import_react6.default.createElement("dd", null, c.knowledgeBaseName), /* @__PURE__ */ import_react6.default.createElement("dt", null, "\u5207\u7247 ID"), /* @__PURE__ */ import_react6.default.createElement("dd", null, c.chunkId || "\u5E73\u53F0\u672A\u63D0\u4F9B"), /* @__PURE__ */ import_react6.default.createElement("dt", null, "\u6587\u6863 ID"), /* @__PURE__ */ import_react6.default.createElement("dd", null, c.documentId || "\u5E73\u53F0\u672A\u63D0\u4F9B"), /* @__PURE__ */ import_react6.default.createElement("dt", null, "\u77E5\u8BC6\u5E93 ID"), /* @__PURE__ */ import_react6.default.createElement("dd", null, c.knowledgeBaseId)) : null, error ? /* @__PURE__ */ import_react6.default.createElement("p", { className: "tbea-error", role: "alert" }, error) : null);
+  return /* @__PURE__ */ import_react7.default.createElement("article", { className: "tbea-citation", "data-tbea-citation": c.citationId }, /* @__PURE__ */ import_react7.default.createElement("div", { className: "tbea-citation-head" }, /* @__PURE__ */ import_react7.default.createElement(FileText, { size: 16 }), /* @__PURE__ */ import_react7.default.createElement("strong", { title: c.documentName }, c.documentName), /* @__PURE__ */ import_react7.default.createElement("button", { className: "tbea-icon", type: "button", title: copied ? "\u5DF2\u590D\u5236" : "\u590D\u5236\u5207\u7247\u5185\u5BB9", "aria-label": copied ? "\u5DF2\u590D\u5236" : "\u590D\u5236\u5207\u7247\u5185\u5BB9", onClick: copy }, copied ? /* @__PURE__ */ import_react7.default.createElement(Check, { size: 16 }) : /* @__PURE__ */ import_react7.default.createElement(Copy, { size: 16 })), /* @__PURE__ */ import_react7.default.createElement("span", { className: "tbea-sr-only", role: "status" }, copied ? "\u5207\u7247\u5185\u5BB9\u5DF2\u590D\u5236" : "")), /* @__PURE__ */ import_react7.default.createElement("div", { className: "tbea-meta" }, /* @__PURE__ */ import_react7.default.createElement("span", { className: "tbea-citation-id", title: "\u56DE\u7B54\u5BF9\u5E94\u7684\u5F15\u7528\u7F16\u53F7" }, c.citationId), /* @__PURE__ */ import_react7.default.createElement("span", null, c.knowledgeBaseName), c.page ? /* @__PURE__ */ import_react7.default.createElement("span", null, "\u7B2C ", c.page, " \u9875") : null, c.documentVersion ? /* @__PURE__ */ import_react7.default.createElement("span", null, "\u7248\u672C ", c.documentVersion) : null, c.effectiveDate ? /* @__PURE__ */ import_react7.default.createElement("span", null, c.effectiveDate, " \u751F\u6548") : null, typeof c.score === "number" ? /* @__PURE__ */ import_react7.default.createElement("span", { title: "\u68C0\u7D22\u76F8\u5173\u5206\u6570\uFF0C\u4E0D\u4EE3\u8868\u7B54\u6848\u6B63\u786E\u7387" }, "\u76F8\u5173\u5206\u6570 ", c.score.toFixed(3)) : null), c.content ? /* @__PURE__ */ import_react7.default.createElement("p", { id: contentId, className: `tbea-content ${hasPreview && !expanded ? "tbea-collapsed" : ""}` }, c.content) : null, hasPreview ? /* @__PURE__ */ import_react7.default.createElement("button", { className: "tbea-text-button", type: "button", "aria-expanded": expanded, "aria-controls": contentId, onClick: () => setExpanded(!expanded) }, expanded ? "\u6536\u8D77\u6587\u5B57" : "\u5C55\u5F00\u6587\u5B57") : null, c.tables.map((table, index) => /* @__PURE__ */ import_react7.default.createElement(Table, { key: index, table, index })), c.images.length ? /* @__PURE__ */ import_react7.default.createElement("div", { className: "tbea-gallery" }, c.images.map((image) => /* @__PURE__ */ import_react7.default.createElement(ImagePreview, { key: image.id, image, snapshotId, bridge }))) : null, /* @__PURE__ */ import_react7.default.createElement("div", { className: "tbea-citation-actions" }, /* @__PURE__ */ import_react7.default.createElement("button", { className: "tbea-text-button", type: "button", "aria-expanded": detail, "aria-controls": detailId, onClick: () => setDetail(!detail) }, detail ? "\u6536\u8D77\u5207\u7247\u8BE6\u60C5" : "\u5207\u7247\u8BE6\u60C5"), /* @__PURE__ */ import_react7.default.createElement("button", { className: "tbea-icon", type: "button", disabled: busy, title: "\u91CD\u65B0\u83B7\u53D6\u5E73\u53F0\u5207\u7247\u8BE6\u60C5", "aria-label": "\u91CD\u65B0\u83B7\u53D6\u5E73\u53F0\u5207\u7247\u8BE6\u60C5", onClick: refresh }, busy ? /* @__PURE__ */ import_react7.default.createElement(LoaderCircle, { size: 16, className: "tbea-spin" }) : /* @__PURE__ */ import_react7.default.createElement(RefreshCw, { size: 16 }))), detail ? /* @__PURE__ */ import_react7.default.createElement("dl", { className: "tbea-details", id: detailId }, /* @__PURE__ */ import_react7.default.createElement("dt", null, "\u6587\u6863"), /* @__PURE__ */ import_react7.default.createElement("dd", null, c.documentName), /* @__PURE__ */ import_react7.default.createElement("dt", null, "\u77E5\u8BC6\u5E93"), /* @__PURE__ */ import_react7.default.createElement("dd", null, c.knowledgeBaseName), /* @__PURE__ */ import_react7.default.createElement("dt", null, "\u5207\u7247 ID"), /* @__PURE__ */ import_react7.default.createElement("dd", null, c.chunkId || "\u5E73\u53F0\u672A\u63D0\u4F9B"), /* @__PURE__ */ import_react7.default.createElement("dt", null, "\u6587\u6863 ID"), /* @__PURE__ */ import_react7.default.createElement("dd", null, c.documentId || "\u5E73\u53F0\u672A\u63D0\u4F9B"), /* @__PURE__ */ import_react7.default.createElement("dt", null, "\u77E5\u8BC6\u5E93 ID"), /* @__PURE__ */ import_react7.default.createElement("dd", null, c.knowledgeBaseId)) : null, error ? /* @__PURE__ */ import_react7.default.createElement("p", { className: "tbea-error", role: "alert" }, error) : null);
 }
 function Table({ table, index }) {
-  return /* @__PURE__ */ import_react6.default.createElement("div", { className: "tbea-table-scroll", tabIndex: 0, role: "region", "aria-label": `\u5207\u7247\u8868\u683C ${index + 1}` }, /* @__PURE__ */ import_react6.default.createElement("table", { className: "tbea-table" }, /* @__PURE__ */ import_react6.default.createElement("tbody", null, table.rows.map((row, r) => /* @__PURE__ */ import_react6.default.createElement("tr", { key: r }, row.map((cell, column) => {
+  return /* @__PURE__ */ import_react7.default.createElement("div", { className: "tbea-table-scroll", tabIndex: 0, role: "region", "aria-label": `\u5207\u7247\u8868\u683C ${index + 1}` }, /* @__PURE__ */ import_react7.default.createElement("table", { className: "tbea-table" }, /* @__PURE__ */ import_react7.default.createElement("tbody", null, table.rows.map((row, r) => /* @__PURE__ */ import_react7.default.createElement("tr", { key: r }, row.map((cell, column) => {
     const Tag = cell.header ? "th" : "td";
-    return /* @__PURE__ */ import_react6.default.createElement(Tag, { key: column, colSpan: cell.colSpan, rowSpan: cell.rowSpan }, cell.text);
+    return /* @__PURE__ */ import_react7.default.createElement(Tag, { key: column, colSpan: cell.colSpan, rowSpan: cell.rowSpan }, cell.text);
   }))))));
 }
 function ImagePreview({ image, snapshotId, bridge }) {
-  const [src, setSrc] = (0, import_react6.useState)("");
-  const [error, setError] = (0, import_react6.useState)("");
-  const [retry, setRetry] = (0, import_react6.useState)(0);
-  const [open, setOpen] = (0, import_react6.useState)(false);
-  (0, import_react6.useEffect)(() => {
+  const [src, setSrc] = (0, import_react7.useState)("");
+  const [error, setError] = (0, import_react7.useState)("");
+  const [retry, setRetry] = (0, import_react7.useState)(0);
+  const [open, setOpen] = (0, import_react7.useState)(false);
+  (0, import_react7.useEffect)(() => {
     const controller = new AbortController();
     let objectUrl;
     setError("");
@@ -24266,19 +24456,19 @@ function ImagePreview({ image, snapshotId, bridge }) {
       if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
   }, [snapshotId, image.id, bridge, retry]);
-  return /* @__PURE__ */ import_react6.default.createElement("figure", { className: "tbea-image" }, /* @__PURE__ */ import_react6.default.createElement("button", { className: "tbea-image-button", type: "button", title: "\u67E5\u770B\u5927\u56FE", "aria-label": "\u67E5\u770B\u5927\u56FE", disabled: !src, onClick: () => setOpen(true) }, src ? /* @__PURE__ */ import_react6.default.createElement("img", { src, alt: image.caption || "\u77E5\u8BC6\u5E93\u5173\u8054\u56FE\u7247", onError: () => {
+  return /* @__PURE__ */ import_react7.default.createElement("figure", { className: "tbea-image" }, /* @__PURE__ */ import_react7.default.createElement("button", { className: "tbea-image-button", type: "button", title: "\u67E5\u770B\u5927\u56FE", "aria-label": "\u67E5\u770B\u5927\u56FE", disabled: !src, onClick: () => setOpen(true) }, src ? /* @__PURE__ */ import_react7.default.createElement("img", { src, alt: image.caption || "\u77E5\u8BC6\u5E93\u5173\u8054\u56FE\u7247", onError: () => {
     setError("\u56FE\u7247\u65E0\u6CD5\u89E3\u7801\uFF0C\u8BF7\u5237\u65B0\u5207\u7247\u540E\u91CD\u8BD5");
     setSrc("");
-  } }) : error ? /* @__PURE__ */ import_react6.default.createElement(Image, { size: 24 }) : /* @__PURE__ */ import_react6.default.createElement(LoaderCircle, { size: 20, className: "tbea-spin" })), image.caption ? /* @__PURE__ */ import_react6.default.createElement("figcaption", null, image.caption) : null, error ? /* @__PURE__ */ import_react6.default.createElement("div", { className: "tbea-error" }, error, /* @__PURE__ */ import_react6.default.createElement("button", { className: "tbea-icon", title: "\u91CD\u8BD5\u56FE\u7247", type: "button", onClick: () => setRetry((r) => r + 1) }, /* @__PURE__ */ import_react6.default.createElement(RefreshCw, { size: 15 }))) : null, open && src ? /* @__PURE__ */ import_react6.default.createElement(ImageModal, { src, caption: image.caption || "\u77E5\u8BC6\u5E93\u5173\u8054\u56FE\u7247", onClose: () => setOpen(false) }) : null);
+  } }) : error ? /* @__PURE__ */ import_react7.default.createElement(Image, { size: 24 }) : /* @__PURE__ */ import_react7.default.createElement(LoaderCircle, { size: 20, className: "tbea-spin" })), image.caption ? /* @__PURE__ */ import_react7.default.createElement("figcaption", null, image.caption) : null, error ? /* @__PURE__ */ import_react7.default.createElement("div", { className: "tbea-error" }, error, /* @__PURE__ */ import_react7.default.createElement("button", { className: "tbea-icon", title: "\u91CD\u8BD5\u56FE\u7247", type: "button", onClick: () => setRetry((r) => r + 1) }, /* @__PURE__ */ import_react7.default.createElement(RefreshCw, { size: 15 }))) : null, open && src ? /* @__PURE__ */ import_react7.default.createElement(ImageModal, { src, caption: image.caption || "\u77E5\u8BC6\u5E93\u5173\u8054\u56FE\u7247", onClose: () => setOpen(false) }) : null);
 }
 function ImageModal({ src, caption, onClose }) {
-  const [scale, setScale] = (0, import_react6.useState)(1);
-  const [natural, setNatural] = (0, import_react6.useState)();
-  const [fit, setFit] = (0, import_react6.useState)(1);
-  const dialog = (0, import_react6.useRef)();
-  const viewport = (0, import_react6.useRef)();
-  const closeButton = (0, import_react6.useRef)();
-  (0, import_react6.useEffect)(() => {
+  const [scale, setScale] = (0, import_react7.useState)(1);
+  const [natural, setNatural] = (0, import_react7.useState)();
+  const [fit, setFit] = (0, import_react7.useState)(1);
+  const dialog = (0, import_react7.useRef)();
+  const viewport = (0, import_react7.useRef)();
+  const closeButton = (0, import_react7.useRef)();
+  (0, import_react7.useEffect)(() => {
     const node = dialog.current;
     const previous = document.activeElement;
     node.showModal();
@@ -24288,7 +24478,7 @@ function ImageModal({ src, caption, onClose }) {
       if (previous?.isConnected) previous.focus();
     };
   }, []);
-  (0, import_react6.useEffect)(() => {
+  (0, import_react7.useEffect)(() => {
     if (!natural) return;
     const node = viewport.current;
     const update = () => setFit(Math.max(0.01, Math.min((node.clientWidth - 32) / natural.width, (node.clientHeight - 32) / natural.height, 1)));
@@ -24310,12 +24500,12 @@ function ImageModal({ src, caption, onClose }) {
       first?.focus();
     }
   }
-  return /* @__PURE__ */ import_react6.default.createElement("dialog", { className: "tbea-image-modal", ref: dialog, "aria-label": caption, onKeyDown: keepFocus, onCancel: (event) => {
+  return /* @__PURE__ */ import_react7.default.createElement("dialog", { className: "tbea-image-modal", ref: dialog, "aria-label": caption, onKeyDown: keepFocus, onCancel: (event) => {
     event.preventDefault();
     onClose();
   }, onClick: (event) => {
     if (event.target === event.currentTarget) onClose();
-  } }, /* @__PURE__ */ import_react6.default.createElement("div", { className: "tbea-modal-head" }, /* @__PURE__ */ import_react6.default.createElement("strong", { title: caption }, caption), /* @__PURE__ */ import_react6.default.createElement("div", { className: "tbea-modal-tools", role: "toolbar", "aria-label": "\u56FE\u7247\u9884\u89C8\u5DE5\u5177" }, /* @__PURE__ */ import_react6.default.createElement("button", { className: "tbea-icon", title: "\u7F29\u5C0F", "aria-label": "\u7F29\u5C0F", type: "button", disabled: scale <= 0.5, onClick: () => setScale((s) => Math.max(0.5, s - 0.25)) }, /* @__PURE__ */ import_react6.default.createElement(ZoomOut, { size: 16 })), /* @__PURE__ */ import_react6.default.createElement("span", { className: "tbea-zoom-label", role: "status", "aria-label": "\u76F8\u5BF9\u9002\u914D\u5C3A\u5BF8\u7684\u7F29\u653E\u6BD4\u4F8B" }, Math.round(scale * 100), "%"), /* @__PURE__ */ import_react6.default.createElement("button", { className: "tbea-icon", title: "\u6062\u590D\u5927\u5C0F", "aria-label": "\u6062\u590D\u5927\u5C0F", type: "button", onClick: () => setScale(1) }, /* @__PURE__ */ import_react6.default.createElement(RotateCcw, { size: 16 })), /* @__PURE__ */ import_react6.default.createElement("button", { className: "tbea-icon", title: "\u653E\u5927", "aria-label": "\u653E\u5927", type: "button", disabled: scale >= 4, onClick: () => setScale((s) => Math.min(4, s + 0.25)) }, /* @__PURE__ */ import_react6.default.createElement(ZoomIn, { size: 16 })), /* @__PURE__ */ import_react6.default.createElement("a", { className: "tbea-icon", title: "\u4E0B\u8F7D\u56FE\u7247", "aria-label": "\u4E0B\u8F7D\u56FE\u7247", href: src, download: "\u77E5\u8BC6\u5E93\u56FE\u7247.png" }, /* @__PURE__ */ import_react6.default.createElement(Download, { size: 16 })), /* @__PURE__ */ import_react6.default.createElement("button", { ref: closeButton, className: "tbea-icon", title: "\u5173\u95ED\u56FE\u7247", "aria-label": "\u5173\u95ED\u56FE\u7247", type: "button", onClick: onClose }, /* @__PURE__ */ import_react6.default.createElement(X, { size: 16 })))), /* @__PURE__ */ import_react6.default.createElement("div", { className: "tbea-modal-image", ref: viewport, tabIndex: 0, role: "region", "aria-label": "\u56FE\u7247\u9884\u89C8\u533A\u57DF" }, /* @__PURE__ */ import_react6.default.createElement("div", { className: "tbea-modal-canvas" }, /* @__PURE__ */ import_react6.default.createElement("img", { src, alt: caption, onLoad: (event) => setNatural({ width: event.currentTarget.naturalWidth, height: event.currentTarget.naturalHeight }), style: { width: natural ? natural.width * fit * scale : "100%", visibility: natural ? "visible" : "hidden" } }))));
+  } }, /* @__PURE__ */ import_react7.default.createElement("div", { className: "tbea-modal-head" }, /* @__PURE__ */ import_react7.default.createElement("strong", { title: caption }, caption), /* @__PURE__ */ import_react7.default.createElement("div", { className: "tbea-modal-tools", role: "toolbar", "aria-label": "\u56FE\u7247\u9884\u89C8\u5DE5\u5177" }, /* @__PURE__ */ import_react7.default.createElement("button", { className: "tbea-icon", title: "\u7F29\u5C0F", "aria-label": "\u7F29\u5C0F", type: "button", disabled: scale <= 0.5, onClick: () => setScale((s) => Math.max(0.5, s - 0.25)) }, /* @__PURE__ */ import_react7.default.createElement(ZoomOut, { size: 16 })), /* @__PURE__ */ import_react7.default.createElement("span", { className: "tbea-zoom-label", role: "status", "aria-label": "\u76F8\u5BF9\u9002\u914D\u5C3A\u5BF8\u7684\u7F29\u653E\u6BD4\u4F8B" }, Math.round(scale * 100), "%"), /* @__PURE__ */ import_react7.default.createElement("button", { className: "tbea-icon", title: "\u6062\u590D\u5927\u5C0F", "aria-label": "\u6062\u590D\u5927\u5C0F", type: "button", onClick: () => setScale(1) }, /* @__PURE__ */ import_react7.default.createElement(RotateCcw, { size: 16 })), /* @__PURE__ */ import_react7.default.createElement("button", { className: "tbea-icon", title: "\u653E\u5927", "aria-label": "\u653E\u5927", type: "button", disabled: scale >= 4, onClick: () => setScale((s) => Math.min(4, s + 0.25)) }, /* @__PURE__ */ import_react7.default.createElement(ZoomIn, { size: 16 })), /* @__PURE__ */ import_react7.default.createElement("a", { className: "tbea-icon", title: "\u4E0B\u8F7D\u56FE\u7247", "aria-label": "\u4E0B\u8F7D\u56FE\u7247", href: src, download: "\u77E5\u8BC6\u5E93\u56FE\u7247.png" }, /* @__PURE__ */ import_react7.default.createElement(Download, { size: 16 })), /* @__PURE__ */ import_react7.default.createElement("button", { ref: closeButton, className: "tbea-icon", title: "\u5173\u95ED\u56FE\u7247", "aria-label": "\u5173\u95ED\u56FE\u7247", type: "button", onClick: onClose }, /* @__PURE__ */ import_react7.default.createElement(X, { size: 16 })))), /* @__PURE__ */ import_react7.default.createElement("div", { className: "tbea-modal-image", ref: viewport, tabIndex: 0, role: "region", "aria-label": "\u56FE\u7247\u9884\u89C8\u533A\u57DF" }, /* @__PURE__ */ import_react7.default.createElement("div", { className: "tbea-modal-canvas" }, /* @__PURE__ */ import_react7.default.createElement("img", { src, alt: caption, onLoad: (event) => setNatural({ width: event.currentTarget.naturalWidth, height: event.currentTarget.naturalHeight }), style: { width: natural ? natural.width * fit * scale : "100%", visibility: natural ? "visible" : "hidden" } }))));
 }
 
 // demo/style.css
@@ -24334,8 +24524,8 @@ registerKnowledgeEntries({ effect: (fn) => fn(), commandUi: { register: (row) =>
   command = row;
 } } }, selection);
 function ComposerDemo() {
-  const [open, setOpen] = (0, import_react7.useState)(false);
-  const [text, setText] = (0, import_react7.useState)("");
+  const [open, setOpen] = (0, import_react8.useState)(false);
+  const [text, setText] = (0, import_react8.useState)("");
   const session = { sessionId: "demo" };
   const slash = text.startsWith("/") && command.name.startsWith(text.slice(1));
   function pick() {
@@ -24348,39 +24538,39 @@ function ComposerDemo() {
     event.preventDefault();
     pick();
   }
-  return /* @__PURE__ */ import_react7.default.createElement("section", { className: "demo-composer", "aria-label": "\u8F93\u5165\u5165\u53E3\u6F14\u793A" }, /* @__PURE__ */ import_react7.default.createElement("p", { className: "demo-note" }, "\u901A\u8FC7 + \u83DC\u5355\u6216 / \u547D\u4EE4\u9009\u62E9\u6765\u6E90\u3002"), /* @__PURE__ */ import_react7.default.createElement(KnowledgeSelection, { selection, selectionSessionId: "demo" }), open || slash ? /* @__PURE__ */ import_react7.default.createElement("div", { className: "demo-menu" }, /* @__PURE__ */ import_react7.default.createElement("button", { type: "button", onClick: pick }, command.label()), /* @__PURE__ */ import_react7.default.createElement("span", null, "\u68C0\u7D22\u5F53\u524D\u9879\u76EE\u53EF\u7528\u7684\u77E5\u8BC6\u5E93")) : null, /* @__PURE__ */ import_react7.default.createElement("textarea", { "aria-label": "\u6F14\u793A\u95EE\u9898\u8F93\u5165\u6846", placeholder: "\u8F93\u5165\u95EE\u9898\uFF0C\u6216\u8F93\u5165 / \u9009\u62E9\u516C\u53F8\u77E5\u8BC6\u5E93", value: text, onChange: (event) => setText(event.target.value), onKeyDown }), /* @__PURE__ */ import_react7.default.createElement("button", { type: "button", className: "demo-add", "aria-label": "\u6DFB\u52A0\u6765\u6E90", "aria-expanded": open, onClick: () => setOpen(!open) }, /* @__PURE__ */ import_react7.default.createElement(Plus, { size: 16 })));
+  return /* @__PURE__ */ import_react8.default.createElement("section", { className: "demo-composer", "aria-label": "\u8F93\u5165\u5165\u53E3\u6F14\u793A" }, /* @__PURE__ */ import_react8.default.createElement("p", { className: "demo-note" }, "\u901A\u8FC7 + \u83DC\u5355\u6216 / \u547D\u4EE4\u9009\u62E9\u6765\u6E90\u3002"), /* @__PURE__ */ import_react8.default.createElement(KnowledgeSelection, { selection, selectionSessionId: "demo" }), open || slash ? /* @__PURE__ */ import_react8.default.createElement("div", { className: "demo-menu" }, /* @__PURE__ */ import_react8.default.createElement("button", { type: "button", onClick: pick }, command.label()), /* @__PURE__ */ import_react8.default.createElement("span", null, "\u68C0\u7D22\u5F53\u524D\u9879\u76EE\u53EF\u7528\u7684\u77E5\u8BC6\u5E93")) : null, /* @__PURE__ */ import_react8.default.createElement("textarea", { "aria-label": "\u6F14\u793A\u95EE\u9898\u8F93\u5165\u6846", placeholder: "\u8F93\u5165\u95EE\u9898\uFF0C\u6216\u8F93\u5165 / \u9009\u62E9\u516C\u53F8\u77E5\u8BC6\u5E93", value: text, onChange: (event) => setText(event.target.value), onKeyDown }), /* @__PURE__ */ import_react8.default.createElement("button", { type: "button", className: "demo-add", "aria-label": "\u6DFB\u52A0\u6765\u6E90", "aria-expanded": open, onClick: () => setOpen(!open) }, /* @__PURE__ */ import_react8.default.createElement(Plus, { size: 16 })));
 }
 function Demo() {
-  const [snapshot, setSnapshot] = (0, import_react7.useState)();
-  const [error, setError] = (0, import_react7.useState)("");
-  const [dark, setDark] = (0, import_react7.useState)(() => localStorage.getItem("tbea-demo-theme") === "dark");
-  (0, import_react7.useEffect)(() => {
+  const [snapshot, setSnapshot] = (0, import_react8.useState)();
+  const [error, setError] = (0, import_react8.useState)("");
+  const [dark, setDark] = (0, import_react8.useState)(() => localStorage.getItem("tbea-demo-theme") === "dark");
+  (0, import_react8.useEffect)(() => {
     document.body.toggleAttribute("data-ds-dark-theme", dark);
     document.documentElement.style.colorScheme = dark ? "dark" : "light";
     localStorage.setItem("tbea-demo-theme", dark ? "dark" : "light");
   }, [dark]);
-  (0, import_react7.useEffect)(() => {
+  (0, import_react8.useEffect)(() => {
     fetch("/demo/result").then((r) => r.json()).then(setSnapshot).catch((e) => setError(e.message));
   }, []);
-  const bridge = (0, import_react7.useCallback)(async (endpoint, args, signal) => {
+  const bridge = (0, import_react8.useCallback)(async (endpoint, args, signal) => {
     if (endpoint === "snapshot" || endpoint === "refresh") return snapshot;
     const response = await fetch(`/demo/asset?snapshotId=${encodeURIComponent(args.snapshotId)}&imageId=${encodeURIComponent(args.imageId)}`, { signal });
     if (!response.ok) throw new Error("\u6F14\u793A\u56FE\u7247\u52A0\u8F7D\u5931\u8D25");
     return { bytes: await response.arrayBuffer(), mediaType: response.headers.get("content-type") };
   }, [snapshot]);
-  if (new URLSearchParams(location.search).has("library")) return /* @__PURE__ */ import_react7.default.createElement(LibraryDemo, null);
-  return /* @__PURE__ */ import_react7.default.createElement("main", null, /* @__PURE__ */ import_react7.default.createElement("header", null, /* @__PURE__ */ import_react7.default.createElement("strong", null, "\u516C\u53F8\u77E5\u8BC6\u5E93"), /* @__PURE__ */ import_react7.default.createElement("div", { className: "demo-header-actions" }, /* @__PURE__ */ import_react7.default.createElement("span", null, "\u5408\u6210\u8D44\u6599 \xB7 \u5C55\u793A\u9884\u89C8"), /* @__PURE__ */ import_react7.default.createElement("button", { className: "demo-theme", type: "button", title: dark ? "\u5207\u6362\u6D45\u8272" : "\u5207\u6362\u6DF1\u8272", "aria-label": dark ? "\u5207\u6362\u6D45\u8272" : "\u5207\u6362\u6DF1\u8272", onClick: () => setDark(!dark) }, dark ? /* @__PURE__ */ import_react7.default.createElement(Sun, { size: 16 }) : /* @__PURE__ */ import_react7.default.createElement(Moon, { size: 16 })))), /* @__PURE__ */ import_react7.default.createElement("section", { className: "demo-answer" }, /* @__PURE__ */ import_react7.default.createElement("h1", null, "\u8BBE\u8BA1\u8D44\u6599\u67E5\u8BE2"), /* @__PURE__ */ import_react7.default.createElement("p", null, "\u8BBE\u8BA1\u8981\u6C42\u5E94\u7ED3\u5408\u4EA7\u54C1\u578B\u53F7\u3001\u9002\u7528\u5730\u533A\u548C\u6709\u6548\u6807\u51C6\u7248\u672C\u6838\u5BF9\uFF0C\u5177\u4F53\u6280\u672F\u53C2\u6570\u4EE5\u6B63\u5F0F\u8D44\u6599\u4E3A\u51C6\u3002"), /* @__PURE__ */ import_react7.default.createElement("p", { className: "demo-note" }, "\u4EE5\u4E0B\u5747\u4E3A\u5408\u6210\u6F14\u793A\u8D44\u6599\uFF0C\u4E0D\u6784\u6210\u5B9E\u9645\u8BBE\u8BA1\u4F9D\u636E\u3002"), error ? /* @__PURE__ */ import_react7.default.createElement("p", { role: "alert" }, error) : snapshot ? /* @__PURE__ */ import_react7.default.createElement(Sources, { view: { snapshotId: snapshot.id, count: snapshot.citations.length, query: snapshot.query, mode: "mock", coverage: snapshot.coverage }, bridge }) : /* @__PURE__ */ import_react7.default.createElement("p", null, "\u6B63\u5728\u52A0\u8F7D\u2026")), /* @__PURE__ */ import_react7.default.createElement(ComposerDemo, null));
+  if (new URLSearchParams(location.search).has("library")) return /* @__PURE__ */ import_react8.default.createElement(LibraryDemo, null);
+  return /* @__PURE__ */ import_react8.default.createElement("main", null, /* @__PURE__ */ import_react8.default.createElement("header", null, /* @__PURE__ */ import_react8.default.createElement("strong", null, "\u516C\u53F8\u77E5\u8BC6\u5E93"), /* @__PURE__ */ import_react8.default.createElement("div", { className: "demo-header-actions" }, /* @__PURE__ */ import_react8.default.createElement("span", null, "\u5408\u6210\u8D44\u6599 \xB7 \u5C55\u793A\u9884\u89C8"), /* @__PURE__ */ import_react8.default.createElement("button", { className: "demo-theme", type: "button", title: dark ? "\u5207\u6362\u6D45\u8272" : "\u5207\u6362\u6DF1\u8272", "aria-label": dark ? "\u5207\u6362\u6D45\u8272" : "\u5207\u6362\u6DF1\u8272", onClick: () => setDark(!dark) }, dark ? /* @__PURE__ */ import_react8.default.createElement(Sun, { size: 16 }) : /* @__PURE__ */ import_react8.default.createElement(Moon, { size: 16 })))), /* @__PURE__ */ import_react8.default.createElement("section", { className: "demo-answer" }, /* @__PURE__ */ import_react8.default.createElement("h1", null, "\u8BBE\u8BA1\u8D44\u6599\u67E5\u8BE2"), /* @__PURE__ */ import_react8.default.createElement("p", null, "\u8BBE\u8BA1\u8981\u6C42\u5E94\u7ED3\u5408\u4EA7\u54C1\u578B\u53F7\u3001\u9002\u7528\u5730\u533A\u548C\u6709\u6548\u6807\u51C6\u7248\u672C\u6838\u5BF9\uFF0C\u5177\u4F53\u6280\u672F\u53C2\u6570\u4EE5\u6B63\u5F0F\u8D44\u6599\u4E3A\u51C6\u3002"), /* @__PURE__ */ import_react8.default.createElement("p", { className: "demo-note" }, "\u4EE5\u4E0B\u5747\u4E3A\u5408\u6210\u6F14\u793A\u8D44\u6599\uFF0C\u4E0D\u6784\u6210\u5B9E\u9645\u8BBE\u8BA1\u4F9D\u636E\u3002"), error ? /* @__PURE__ */ import_react8.default.createElement("p", { role: "alert" }, error) : snapshot ? /* @__PURE__ */ import_react8.default.createElement(Sources, { view: { snapshotId: snapshot.id, count: snapshot.citations.length, query: snapshot.query, mode: "mock", coverage: snapshot.coverage }, bridge }) : /* @__PURE__ */ import_react8.default.createElement("p", null, "\u6B63\u5728\u52A0\u8F7D\u2026")), /* @__PURE__ */ import_react8.default.createElement(ComposerDemo, null));
 }
 var libraryBridge = async (endpoint, args, signal) => {
   const response = await fetch(`/demo/library/${endpoint.slice(8)}?${new URLSearchParams(args)}`, { signal });
   if (!response.ok) throw new Error((await response.json()).message || `HTTP ${response.status}`);
-  if (endpoint === "library-pdf-range") return { bytes: new Uint8Array(await response.arrayBuffer()), mediaType: response.headers.get("content-type") };
+  if (endpoint === "library-pdf-range" || endpoint === "library-sheet-range") return { bytes: new Uint8Array(await response.arrayBuffer()), mediaType: response.headers.get("content-type") };
   return response.json();
 };
 function LibraryDemo() {
-  return /* @__PURE__ */ import_react7.default.createElement("div", { style: { height: "100dvh" } }, /* @__PURE__ */ import_react7.default.createElement(LibraryBrowser, { bridge: libraryBridge, pdfAssetPath: "/demo/pdf-asset" }));
+  return /* @__PURE__ */ import_react8.default.createElement("div", { style: { height: "100dvh" } }, /* @__PURE__ */ import_react8.default.createElement(LibraryBrowser, { bridge: libraryBridge, pdfAssetPath: "/demo/pdf-asset" }));
 }
-(0, import_client.createRoot)(document.getElementById("root")).render(/* @__PURE__ */ import_react7.default.createElement(Demo, null));
+(0, import_client.createRoot)(document.getElementById("root")).render(/* @__PURE__ */ import_react8.default.createElement(Demo, null));
 /*! Bundled license information:
 
 react/cjs/react.development.js:

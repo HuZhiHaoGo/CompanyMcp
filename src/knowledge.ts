@@ -1,15 +1,15 @@
 import { randomUUID } from 'node:crypto';
-import { appendDiagnostic } from './diagnostics.ts';
+import { appendDiagnostic, diagnosticCredentials, diagnosticErrorCode, diagnosticId, diagnosticText } from './diagnostics.ts';
 import type { Tool } from '@modelcontextprotocol/sdk/types.js';
-import { normalizeCitation, modelResult, publicSnapshot, citationKnowledgeBaseId } from './normalize.ts';
+import { normalizeCitation, modelResult, publicSnapshot, citationKnowledgeBaseId, citationRawText } from './normalize.ts';
 import { Store, requireImageId, requireSnapshotId } from './store.ts';
 import { listPlatformKnowledgeBases, detailPlatform, fetchPlatformImage, PlatformError } from './platform.ts';
 import { mockChunks, mockImage } from './mock.ts';
 import { SearchGate } from './gate.ts';
 import { SharedTasks } from './shared-tasks.ts';
 import { RETRIEVAL_DEFAULTS } from './config.ts';
-import { retrieveLibraries, selectEvidence } from './retrieval.ts';
-import type { CandidateDecision } from './retrieval.ts';
+import { diagnosticDocumentName, retrieveLibraries, selectEvidence } from './retrieval.ts';
+import type { CandidateDecision, CandidateReport, LibrarySearchTrace } from './retrieval.ts';
 import { summarizeKnowledgeBases } from './catalog-summary.ts';
 import { checkEvidence, evidenceScore, standaloneCalculation } from './evidence.ts';
 import type { EvidenceDecision, EvidenceText } from './evidence.ts';
@@ -18,6 +18,26 @@ import type { SemanticModel, SemanticOutcome } from './semantic.ts';
 import type { Citation, Coverage, Fetcher, ImageData, JsonRecord, KnowledgeBase, Mode, ServiceConfig, Snapshot } from './contracts.ts';
 
 const allSources = (snapshot: Snapshot) => snapshot.citations.flatMap(c => [c, ...(c.equivalentSources || [])]);
+
+interface RetrievalTrace {
+  passes: { phase: string; attempted: number; completed: number; ms: number }[];
+  libraries: LibrarySearchTrace[];
+  candidates: CandidateDecision[];
+  omittedLibraries: number;
+  omittedCandidates: number;
+  omittedExcerpts: number;
+  semantic?: SemanticOutcome;
+  threshold?: number;
+  platformThreshold?: number;
+  authorizedLibraries?: number;
+  topics?: unknown;
+  projection: { libraryId?: string; chunkId?: string; citationId: string; reason: string; truncated: boolean }[];
+}
+
+interface SearchOrigin {
+  sessionId?: string;
+  messageId?: string;
+}
 
 export interface KnowledgeResult {
   model: ReturnType<typeof modelResult>;
@@ -83,14 +103,42 @@ export class KnowledgeService {
     return { ...summarizeKnowledgeBases(catalog), expiresAt };
   }
 
-  async search(args: JsonRecord, signal?: AbortSignal, manuallySelected = false, semanticModel?: SemanticModel): Promise<KnowledgeResult> {
+  async search(args: JsonRecord, signal?: AbortSignal, manuallySelected = false, semanticModel?: SemanticModel, origin?: SearchOrigin): Promise<KnowledgeResult> {
+    const id = randomUUID();
+    const started = performance.now();
+    const trace: RetrievalTrace | undefined = this.config.mode === 'live' && (this.config.retrieval?.diagnostics ?? RETRIEVAL_DEFAULTS.diagnostics)
+      ? { passes: [], libraries: [], candidates: [], omittedLibraries: 0, omittedCandidates: 0, omittedExcerpts: 0, projection: [] }
+      : undefined;
+    let result: KnowledgeResult | undefined;
+    let errorCode: string | undefined;
+    try {
+      result = await this.performSearch(id, args, signal, manuallySelected, semanticModel, trace);
+      return result;
+    } catch (error) {
+      errorCode = diagnosticErrorCode(error);
+      throw error;
+    } finally {
+      if (trace) await appendDiagnostic(this.config, {
+        event: 'tbea-retrieval', searchId: id, sessionId: diagnosticId(origin?.sessionId), messageId: diagnosticId(origin?.messageId),
+        trigger: manuallySelected ? 'manual' : origin?.sessionId ? 'model' : 'mcp', ...trace,
+        ...(result && {
+          status: result.model.clarification ? 'clarification' : result.model.evidenceStatus ?? 'completed',
+          coverage: result.view.coverage, selected: result.view.count, sent: result.model.hitCount,
+        }),
+        errorCode, ms: Math.round(performance.now() - started),
+      });
+    }
+  }
+
+  private async performSearch(id: string, args: JsonRecord, signal: AbortSignal | undefined, manuallySelected: boolean,
+    semanticModel: SemanticModel | undefined, trace: RetrievalTrace | undefined): Promise<KnowledgeResult> {
     const query = typeof args.query === 'string' ? args.query.trim() : '';
     if (!query || query.length > this.config.limits.maxQueryCharacters) throw new PlatformError('INVALID_QUERY', `问题不能为空，且不能超过${this.config.limits.maxQueryCharacters}字符`);
     const top = args.top ?? this.config.limits.top;
     if (typeof top !== 'number' || !Number.isInteger(top) || top < 1 || top > 20) throw new PlatformError('INVALID_TOP', 'top 必须是1～20的整数');
     if (!manuallySelected && standaloneCalculation(query)) {
       // 模型误调用工具时，明显的独立算术题无需向公司平台发送请求。
-      const snapshot: Snapshot = { schema: 'tbea-snapshot/v1', id: randomUUID(), mode: this.config.mode, query, createdAt: new Date().toISOString(), totalCount: 0, retrievalSkipped: true, citations: [] };
+      const snapshot: Snapshot = { schema: 'tbea-snapshot/v1', id, mode: this.config.mode, query, createdAt: new Date().toISOString(), totalCount: 0, retrievalSkipped: true, citations: [] };
       await this.store.save(snapshot, signal);
       signal?.throwIfAborted();
       return this.result(snapshot);
@@ -100,8 +148,11 @@ export class KnowledgeService {
     const roundSignal = signal ? AbortSignal.any([signal, deadline]) : deadline;
     const live = this.config.mode === 'live';
     const evidence = live ? checkEvidence(query, settings.synonyms) : undefined;
-    const id = randomUUID();
-    const started = performance.now();
+    if (trace) {
+      trace.topics = evidence?.diagnosticTopics;
+      trace.threshold = this.evidenceThreshold();
+      trace.platformThreshold = this.config.platform.rankScoreThreshold ?? 0.4;
+    }
     let catalog: KnowledgeBase[];
     try { catalog = await this.catalog(roundSignal); }
     catch (error) {
@@ -110,6 +161,7 @@ export class KnowledgeService {
       throw error;
     }
     const allowed = new Set(catalog.map(k => k.id));
+    if (trace) trace.authorizedLibraries = allowed.size;
     const selected: unknown = args.knowledge_base_ids;
     let ids = allowed;
     if (selected != null) {
@@ -132,7 +184,7 @@ export class KnowledgeService {
     let review: Awaited<ReturnType<typeof reviewCandidates>>;
     let semanticClarification = false;
     let semanticDeadline: AbortSignal | undefined;
-    let semantic: SemanticOutcome = semanticModel ? 'local' : 'unavailable';
+    if (trace) trace.semantic = semanticModel ? 'local' : 'unavailable';
     const item = (citation: Citation) => ({ text: citation.modelText, documentName: citation.documentName,
       documentVersion: citation.documentVersion, effectiveDate: citation.effectiveDate });
     const noEvidence: EvidenceDecision = { topics: [], directTopics: [], quality: 0, reason: 'semantic-unrelated' };
@@ -142,17 +194,17 @@ export class KnowledgeService {
       if (!review) return local;
       const fingerprint = evidenceFingerprint(candidate);
       const decision = review.decisions.get(fingerprint);
-      if (decision?.kind === 'unrelated') return local.directTopics.length && evidence!.confident(candidate) ? local : noEvidence;
+      if (decision?.kind === 'unrelated') {
+        return (local.directTopics.length && evidence!.confident(candidate)) || evidence!.retainsRelated(local) ? local : noEvidence;
+      }
       const scopes = evidence!.semanticTopics(candidate);
       const topics = decision?.kind === 'direct' ? decision.topics.filter(topic => scopes.includes(topic)) : [];
       return topics.length
         ? { topics, directTopics: topics, quality: 2, reason: 'semantic-direct' }
         : local;
     }
-    const select = (chunks: readonly JsonRecord[], report?: (candidate: CandidateDecision) => void) =>
+    const select = (chunks: readonly JsonRecord[], report?: CandidateReport) =>
       selectEvidence(chunks, catalog, ids, id, limit, threshold, evidence && evaluate, report);
-    const passes: { phase: string; attempted: number; completed: number; ms: number }[] = [];
-    const candidates: CandidateDecision[] = [];
     const ranked = evidence ? catalog.filter(library => ids.has(library.id) && evidence.libraryPriority(library)).map(library => library.id) : [];
     const shortlist = (chunks: readonly JsonRecord[]) => chunks.filter(raw => ids.has(citationKnowledgeBaseId(raw)) && evidenceScore(raw.rank_score) >= threshold)
       .sort((a, b) => evidenceScore(b.rank_score) - evidenceScore(a.rank_score)).slice(0, 8)
@@ -169,18 +221,18 @@ export class KnowledgeService {
           if (evidence.summarize(original.filter(evidence.confident)).status === 'matched') return undefined;
           semanticDeadline = AbortSignal.any([roundSignal, AbortSignal.timeout(10000)]);
           review = await reviewCandidates(semanticModel, query, shortlist(chunks), evidence.semanticQueryTopics, semanticDeadline);
-          if (!review) { semantic = 'fallback'; return undefined; }
+          if (!review) { if (trace) trace.semantic = 'fallback'; return undefined; }
           const revised = evidence.summarizeDecisions(select(chunks).map(c => evaluate(item(c))));
           if (review.needsClarification && revised.status === 'none') {
             semanticClarification = true;
-            semantic = 'clarification';
+            if (trace) trace.semantic = 'clarification';
             return undefined;
           }
-          semantic = 'reviewed';
+          if (trace) trace.semantic = 'reviewed';
           const rewrite = review.rewrite;
           if (review.needsClarification || revised.status === 'matched' || !rewrite || query.includes(rewrite)
               || /[<>{}\[\]\r\n]|https?:\/\//iu.test(rewrite) || query.length + rewrite.length + 1 > this.config.limits.maxQueryCharacters) return undefined;
-          semantic = 'reformulated';
+          if (trace) trace.semantic = 'reformulated';
           return query + ' ' + rewrite;
         } : undefined,
         verifySupplement: evidence && semanticModel ? async chunks => {
@@ -191,10 +243,37 @@ export class KnowledgeService {
           if (!next) return;
           for (const [fingerprint, decision] of next.decisions) review.decisions.set(fingerprint, decision);
         } : undefined,
-        passFinished: settings.diagnostics ? pass => passes.push(pass) : undefined,
+        passFinished: trace && (pass => { trace.passes.push(pass); }),
+        libraryFinished: trace && (batch => {
+          if (trace.libraries.length < 200) trace.libraries.push(batch);
+          else trace.omittedLibraries++;
+        }),
       });
     signal?.throwIfAborted();
-    const citations = select(result.chunks, settings.diagnostics && live ? candidate => candidates.push(candidate) : undefined);
+    const credentials = trace ? diagnosticCredentials(this.config) : [];
+    let excerpts = 0;
+    const citations = select(result.chunks, trace && ((candidate, raw, normalized) => {
+      if (trace.candidates.length >= 2000) { trace.omittedCandidates++; return; }
+      trace.candidates.push(candidate);
+      if (!ids.has(citationKnowledgeBaseId(raw))) return;
+      candidate.documentName = diagnosticDocumentName(raw, credentials);
+      if (settings.diagnosticExcerpts === false) return;
+      const source = normalized?.modelText ?? citationRawText(raw);
+      if (!source) return;
+      if (excerpts >= 100) { trace.omittedExcerpts++; return; }
+      excerpts++;
+      // 可以展示表头和单元格。阈值前淘汰的切片用有界输入生成独立的诊断片段。
+      let text = source;
+      if (!normalized) {
+        try { text = normalizeCitation({ content: source.slice(0, 8192) }, 0, id).modelText; }
+        catch { return; }
+      }
+      const excerpt = diagnosticText(text, 1600, credentials);
+      if (excerpt) {
+        candidate.excerpt = excerpt;
+        candidate.excerptTruncated = text.length > 1600 || (!normalized && source.length > 8192);
+      }
+    }));
     if (review) for (const citation of citations.flatMap(c => [c, ...(c.equivalentSources ?? [])])) {
       const input = item(citation);
       const decision = evaluate(input);
@@ -209,17 +288,16 @@ export class KnowledgeService {
     signal?.throwIfAborted();
     await this.store.save(snapshot, signal);
     signal?.throwIfAborted();
-    if (settings.diagnostics && live) await appendDiagnostic(this.config, {
-      event: 'tbea-retrieval', searchId: id, threshold, coverage: result.coverage, passes, candidates, topics: evidence?.diagnosticTopics, semantic,
-      ms: Math.round(performance.now() - started),
-    });
-    return this.result(snapshot);
+    return this.result(snapshot, undefined, trace && ((citation, reason, truncated) => {
+      trace.projection.push({ libraryId: diagnosticId(citation.knowledgeBaseId), chunkId: diagnosticId(citation.chunkId),
+        citationId: citation.citationId, reason, truncated });
+    }));
   }
   private evidenceThreshold() {
     return this.config.retrieval?.evidenceScoreThreshold ?? this.config.platform.rankScoreThreshold ?? 0.4;
   }
-  private result(snapshot: Snapshot, citations?: readonly Citation[]): KnowledgeResult {
-    const model = modelResult(snapshot, this.config.limits.maxTextCharacters, citations, this.evidenceThreshold(), this.config.retrieval?.synonyms);
+  private result(snapshot: Snapshot, citations?: readonly Citation[], report?: Parameters<typeof modelResult>[5]): KnowledgeResult {
+    const model = modelResult(snapshot, this.config.limits.maxTextCharacters, citations, this.evidenceThreshold(), this.config.retrieval?.synonyms, report);
     return { model, view: {
       schema: 'tbea-view/v1', snapshotId: snapshot.id, count: snapshot.citations.length, query: snapshot.query, mode: snapshot.mode,
       coverage: snapshot.coverage, evidenceStatus: model.evidenceStatus, ...(model.clarification ? { clarification: model.clarification } : {}),
@@ -291,8 +369,8 @@ export class KnowledgeService {
       await this.store.saveImage(imageId, image); return image;
     });
   }
-  async call(name: string, args: JsonRecord, signal?: AbortSignal, manuallySelected = false, semanticModel?: SemanticModel): Promise<KnowledgeResult> {
-    if (name === 'search_knowledge') return this.search(args, signal, manuallySelected, semanticModel);
+  async call(name: string, args: JsonRecord, signal?: AbortSignal, manuallySelected = false, semanticModel?: SemanticModel, origin?: SearchOrigin): Promise<KnowledgeResult> {
+    if (name === 'search_knowledge') return this.search(args, signal, manuallySelected, semanticModel, origin);
     if (name === 'get_chunk_detail') return this.detail(args.snapshotId, args.citationId, signal);
     throw new PlatformError('UNKNOWN_TOOL', '未知工具');
   }
