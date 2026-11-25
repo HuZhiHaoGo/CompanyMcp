@@ -21,7 +21,7 @@ PDF 由内置查看器展示，等待期间可查看下载和转换进度。 [�
 
 ## 内网快速安装
 
-仅在内网使用时，复制 `offline/0.11.16/dsh-mcp-tbea-knowledge-win-x64.zip`。[安装与升级](docs/使用与维护手册.md#安装与升级)
+仅在内网使用时，复制 `offline/0.11.15/dsh-mcp-tbea-knowledge-win-x64.zip`。[安装与升级](docs/使用与维护手册.md#安装与升级)
 
 1. 正式部署时，管理员直接在解压包的 `plugin\config\example.json` 中填写公司配置。原样安装通用离线包会使用演示模式。
 2. 在匠宝 `desktop` 的「插件管理」中添加同一份 `plugin` 目录并启用。首次启用自动在实际 `DSH_HOME` 下生成 `dsh-mcp-tbea-knowledge.json`，Windows 默认是 `%APPDATA%\dsh-desktop\harness`。已有配置会继续使用，可随 `harness` 统一下发。

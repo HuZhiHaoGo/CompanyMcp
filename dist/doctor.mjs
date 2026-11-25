@@ -7576,11 +7576,6 @@ function commandHarnessHome(override) {
 
 // src/diagnostics.ts
 import path3 from "node:path";
-
-// src/version.ts
-var SERVICE_VERSION = "0.11.16";
-
-// src/diagnostics.ts
 var maxLogBytes = 10 * 1024 * 1024;
 function diagnosticFilename(config2) {
   return path3.join(config2.diagnosticsDirectory ?? path3.join(config2.dataDirectory, "logs"), "dsh-mcp-tbea-knowledge.jsonl");
@@ -7588,6 +7583,7 @@ function diagnosticFilename(config2) {
 
 // src/runtime.ts
 import { createHmac } from "node:crypto";
+var SERVICE_VERSION = "0.11.15";
 var RUNTIME_PROTOCOL = "tbea-runtime/v1";
 function canonical(value) {
   if (Array.isArray(value)) return value.map(canonical);
@@ -19219,9 +19215,7 @@ async function diagnose(filename, options) {
   const health = await fetch(`${base}/health`, { signal: AbortSignal.timeout(5e3) });
   if (!health.ok) throw new Error(`Health check HTTP ${health.status}`);
   const metadata = await health.json();
-  if (metadata.name !== "tbea-knowledge" || metadata.version !== SERVICE_VERSION) {
-    throw new Error(`\u7AEF\u53E3\u4E0A\u7684\u77E5\u8BC6\u670D\u52A1\u7248\u672C\u4E3A ${metadata.version ?? "\u672A\u77E5"}\uFF0C\u672C\u5305\u8981\u6C42 ${SERVICE_VERSION}\u3002\u8BF7\u505C\u6B62\u65E7\u670D\u52A1\u5E76\u91CD\u65B0\u6253\u5F00\u5320\u5B9D\u3002`);
-  }
+  if (metadata.name !== "tbea-knowledge" || metadata.version !== SERVICE_VERSION) throw new Error("Wrong service or old version on configured port. Stop the old service and restart DSH.");
   const runtime = await fetch(base + "/runtime", { headers: { Authorization: `Bearer ${config2.serviceToken}` }, signal: AbortSignal.timeout(5e3) });
   if (!runtime.ok) throw new Error(`Runtime authentication HTTP ${runtime.status}`);
   const identity = await runtime.json();
@@ -19260,9 +19254,6 @@ if (path4.resolve(process.argv[1] || "") === fileURLToPath(import.meta.url)) {
       });
       const manifest = JSON.parse(await fs2.readFile(path4.join(packageRoot, "package.json"), "utf8"));
       console.log(`Desktop plugin: ${manifest.version}; ${packageRoot}`);
-      if (manifest.version !== SERVICE_VERSION) {
-        throw new Error(`\u5320\u5B9D desktop \u7684\u751F\u6548\u7248\u672C\u4E3A ${manifest.version ?? "\u672A\u77E5"}\uFF0C\u672C\u5305\u8981\u6C42 ${SERVICE_VERSION}\u3002\u8BF7\u5728\u63D2\u4EF6\u7BA1\u7406\u6838\u5BF9\u5DF2\u5B89\u88C5\u7248\u672C\uFF0C\u4ECE\u6258\u76D8\u5B8C\u5168\u9000\u51FA\u5E76\u91CD\u65B0\u6253\u5F00\u5320\u5B9D\uFF0C\u518D\u8FD0\u884C\u8BCA\u65AD\u3002`);
-      }
       const { filename, options } = desktopConfigLocations(harnessHome);
       await diagnose(filename, options);
     } else {

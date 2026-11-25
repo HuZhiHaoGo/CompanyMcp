@@ -34248,11 +34248,6 @@ import { randomUUID as randomUUID3 } from "node:crypto";
 // src/diagnostics.ts
 import fs2 from "node:fs/promises";
 import path2 from "node:path";
-
-// src/version.ts
-var SERVICE_VERSION = "0.11.16";
-
-// src/diagnostics.ts
 var maxLogBytes = 10 * 1024 * 1024;
 var pending = /* @__PURE__ */ new Map();
 function diagnosticFilename(config2) {
@@ -34290,7 +34285,7 @@ async function timePreview(timing, phase, work) {
 }
 function appendDiagnostic(config2, event) {
   const filename = diagnosticFilename(config2);
-  const line = JSON.stringify({ time: (/* @__PURE__ */ new Date()).toISOString(), ...event, pluginVersion: SERVICE_VERSION }) + "\n";
+  const line = JSON.stringify({ time: (/* @__PURE__ */ new Date()).toISOString(), ...event }) + "\n";
   const next = (pending.get(filename) ?? Promise.resolve()).then(async () => {
     await fs2.mkdir(path2.dirname(filename), { recursive: true, mode: 448 });
     const size = await fs2.stat(filename).then((stat) => stat.size).catch((error3) => {
@@ -52776,7 +52771,7 @@ ${body}`;
     return {
       canonical: "\u4E2D\u5C42\u5E72\u90E8 \u957F\u6C99 \u5DEE\u65C5\u8D39 \u4F19\u98DF\u8865\u52A9 \u5E02\u5185\u4EA4\u901A\u8D39 \u57CE\u5E02\u7C7B\u522B",
       libraryHint: /差旅|出差|费用报销/u,
-      supplement: specific && specific !== lodging ? `\u957F\u6C99 \u56FD\u5185\u5DEE\u65C5\u8D39 ${specific.test("\u4F19\u98DF") ? "\u4F19\u98DF\u8865\u52A9" : "\u5E02\u5185\u4EA4\u901A\u8D39"} \u6807\u51C6` : specific ? "\u957F\u6C99 \u6E56\u5357 \u7701\u4F1A \u5DEE\u65C5 \u4F4F\u5BBF\u6807\u51C6 \u4E2D\u5C42" : "\u5DEE\u65C5\u8D39\u7BA1\u7406\u529E\u6CD5 \u51FA\u5DEE\u8865\u52A9 \u4EA4\u901A\u8865\u8D34 \u4F4F\u5BBF\u6807\u51C6",
+      supplement: specific && specific !== lodging ? `\u957F\u6C99 \u56FD\u5185\u5DEE\u65C5\u8D39 ${specific.test("\u4F19\u98DF") ? "\u4F19\u98DF\u8865\u52A9" : "\u5E02\u5185\u4EA4\u901A\u8D39"} \u6807\u51C6` : "\u957F\u6C99 \u6E56\u5357 \u7701\u4F1A \u5DEE\u65C5 \u4F4F\u5BBF\u6807\u51C6 \u4E2D\u5C42",
       retainRelated: true,
       verify: (body, title) => {
         const source = `${title}
@@ -67994,6 +67989,7 @@ var LibraryBrowser = class {
 
 // src/runtime.ts
 import { createHmac } from "node:crypto";
+var SERVICE_VERSION = "0.11.15";
 var RUNTIME_PROTOCOL = "tbea-runtime/v1";
 function canonical(value) {
   if (Array.isArray(value)) return value.map(canonical);
