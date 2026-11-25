@@ -10,6 +10,31 @@ import { configIdentity,SERVICE_VERSION,RUNTIME_PROTOCOL } from '../src/runtime.
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 
+async function checkDesktopPlugin(harnessHome) {
+  const name = 'dsh-plugin-tbea-knowledge';
+  const entry = path.join(harnessHome, 'profiles/desktop/node_modules', name);
+  const restart = '请从匠宝托盘完全退出后重开。';
+  const reinstall = `如果问题持续，请在「插件管理」里重新安装 ${SERVICE_VERSION}。`;
+  const packageRoot = await fs.realpath(entry).catch(async error => {
+    if (error.code !== 'ENOENT') throw error;
+    const target = await fs.readlink(entry).catch(() => undefined);
+    const problem = target ? `匠宝 desktop 插件入口仍指向缺失的安装目录 ${target}。`
+      : `未找到匠宝 desktop 插件入口 ${entry}。`;
+    throw new Error(`${problem}${restart}${reinstall}`, { cause: error });
+  });
+  const manifestPath = path.join(packageRoot, 'package.json');
+  const text = await fs.readFile(manifestPath, 'utf8').catch(error => {
+    if (error.code !== 'ENOENT') throw error;
+    throw new Error(`匠宝 desktop 插件缺少清单文件 ${manifestPath}。${restart}${reinstall}`, { cause: error });
+  });
+  const manifest = JSON.parse(text);
+  if (manifest?.name !== name) throw new Error(`匠宝 desktop 插件清单中的包名不匹配（${manifestPath}）。${reinstall}`);
+  console.log(`Desktop plugin: ${manifest.version}; ${packageRoot}`);
+  if (manifest.version !== SERVICE_VERSION) {
+    throw new Error(`匠宝 desktop 当前安装目录的版本为 ${manifest.version ?? '未知'}，本离线包版本为 ${SERVICE_VERSION}。${restart}${reinstall}`);
+  }
+}
+
 export async function diagnose(filename, options) {
   console.log(`Configuration: ${path.resolve(filename)}`);
   const config = await readConfig(filename, options); const base = `http://127.0.0.1:${config.port}`;
@@ -23,7 +48,10 @@ export async function diagnose(filename, options) {
   const health = await fetch(`${base}/health`, { signal: AbortSignal.timeout(5000) });
   if (!health.ok) throw new Error(`Health check HTTP ${health.status}`);
   const metadata=await health.json();
-  if(metadata.name!=='tbea-knowledge' || metadata.version!==SERVICE_VERSION) throw new Error('Wrong service or old version on configured port. Stop the old service and restart DSH.');
+  if (metadata.name !== 'tbea-knowledge') throw new Error(`端口 ${config.port} 当前由其他服务使用。请停止该服务，或检查知识库配置中的端口。`);
+  if (metadata.version !== SERVICE_VERSION) {
+    throw new Error(`端口 ${config.port} 的知识服务版本为 ${metadata.version ?? '未知'}，本离线包版本为 ${SERVICE_VERSION}。请停止旧服务并从匠宝托盘完全退出后重开。`);
+  }
   const runtime=await fetch(base+'/runtime',{ headers:{ Authorization:`Bearer ${config.serviceToken}` },signal:AbortSignal.timeout(5000) });
   if(!runtime.ok) throw new Error(`Runtime authentication HTTP ${runtime.status}`);
   const identity=await runtime.json();
@@ -51,13 +79,7 @@ if (path.resolve(process.argv[1] || '') === fileURLToPath(import.meta.url)) {
       if (values.config) throw new Error('--desktop 使用 Harness 根目录配置，不能同时传入 --config');
       const harnessHome = commandHarnessHome(values['harness-home']);
       if (!harnessHome || !path.isAbsolute(harnessHome)) throw new Error('请提供 Harness 的绝对路径');
-      const entry = path.join(harnessHome, 'profiles/desktop/node_modules/dsh-plugin-tbea-knowledge');
-      const packageRoot = await fs.realpath(entry).catch(error => {
-        if (error.code === 'ENOENT') throw new Error(`未找到匠宝 desktop 插件入口：${entry}`, { cause: error });
-        throw error;
-      });
-      const manifest = JSON.parse(await fs.readFile(path.join(packageRoot, 'package.json'), 'utf8'));
-      console.log(`Desktop plugin: ${manifest.version}; ${packageRoot}`);
+      await checkDesktopPlugin(harnessHome);
       const { filename, options } = desktopConfigLocations(harnessHome);
       await diagnose(filename, options);
     } else {

@@ -7583,7 +7583,7 @@ function diagnosticFilename(config2) {
 
 // src/runtime.ts
 import { createHmac } from "node:crypto";
-var SERVICE_VERSION = "0.11.15";
+var SERVICE_VERSION = "0.11.17";
 var RUNTIME_PROTOCOL = "tbea-runtime/v1";
 function canonical(value) {
   if (Array.isArray(value)) return value.map(canonical);
@@ -19201,6 +19201,29 @@ var StreamableHTTPClientTransport = class {
 };
 
 // scripts/doctor.mjs
+async function checkDesktopPlugin(harnessHome) {
+  const name = "dsh-plugin-tbea-knowledge";
+  const entry = path4.join(harnessHome, "profiles/desktop/node_modules", name);
+  const restart = "\u8BF7\u4ECE\u5320\u5B9D\u6258\u76D8\u5B8C\u5168\u9000\u51FA\u540E\u91CD\u5F00\u3002";
+  const reinstall = `\u5982\u679C\u95EE\u9898\u6301\u7EED\uFF0C\u8BF7\u5728\u300C\u63D2\u4EF6\u7BA1\u7406\u300D\u91CC\u91CD\u65B0\u5B89\u88C5 ${SERVICE_VERSION}\u3002`;
+  const packageRoot = await fs2.realpath(entry).catch(async (error2) => {
+    if (error2.code !== "ENOENT") throw error2;
+    const target = await fs2.readlink(entry).catch(() => void 0);
+    const problem = target ? `\u5320\u5B9D desktop \u63D2\u4EF6\u5165\u53E3\u4ECD\u6307\u5411\u7F3A\u5931\u7684\u5B89\u88C5\u76EE\u5F55 ${target}\u3002` : `\u672A\u627E\u5230\u5320\u5B9D desktop \u63D2\u4EF6\u5165\u53E3 ${entry}\u3002`;
+    throw new Error(`${problem}${restart}${reinstall}`, { cause: error2 });
+  });
+  const manifestPath = path4.join(packageRoot, "package.json");
+  const text = await fs2.readFile(manifestPath, "utf8").catch((error2) => {
+    if (error2.code !== "ENOENT") throw error2;
+    throw new Error(`\u5320\u5B9D desktop \u63D2\u4EF6\u7F3A\u5C11\u6E05\u5355\u6587\u4EF6 ${manifestPath}\u3002${restart}${reinstall}`, { cause: error2 });
+  });
+  const manifest = JSON.parse(text);
+  if (manifest?.name !== name) throw new Error(`\u5320\u5B9D desktop \u63D2\u4EF6\u6E05\u5355\u4E2D\u7684\u5305\u540D\u4E0D\u5339\u914D\uFF08${manifestPath}\uFF09\u3002${reinstall}`);
+  console.log(`Desktop plugin: ${manifest.version}; ${packageRoot}`);
+  if (manifest.version !== SERVICE_VERSION) {
+    throw new Error(`\u5320\u5B9D desktop \u5F53\u524D\u5B89\u88C5\u76EE\u5F55\u7684\u7248\u672C\u4E3A ${manifest.version ?? "\u672A\u77E5"}\uFF0C\u672C\u79BB\u7EBF\u5305\u7248\u672C\u4E3A ${SERVICE_VERSION}\u3002${restart}${reinstall}`);
+  }
+}
 async function diagnose(filename, options) {
   console.log(`Configuration: ${path4.resolve(filename)}`);
   const config2 = await readConfig(filename, options);
@@ -19215,7 +19238,10 @@ async function diagnose(filename, options) {
   const health = await fetch(`${base}/health`, { signal: AbortSignal.timeout(5e3) });
   if (!health.ok) throw new Error(`Health check HTTP ${health.status}`);
   const metadata = await health.json();
-  if (metadata.name !== "tbea-knowledge" || metadata.version !== SERVICE_VERSION) throw new Error("Wrong service or old version on configured port. Stop the old service and restart DSH.");
+  if (metadata.name !== "tbea-knowledge") throw new Error(`\u7AEF\u53E3 ${config2.port} \u5F53\u524D\u7531\u5176\u4ED6\u670D\u52A1\u4F7F\u7528\u3002\u8BF7\u505C\u6B62\u8BE5\u670D\u52A1\uFF0C\u6216\u68C0\u67E5\u77E5\u8BC6\u5E93\u914D\u7F6E\u4E2D\u7684\u7AEF\u53E3\u3002`);
+  if (metadata.version !== SERVICE_VERSION) {
+    throw new Error(`\u7AEF\u53E3 ${config2.port} \u7684\u77E5\u8BC6\u670D\u52A1\u7248\u672C\u4E3A ${metadata.version ?? "\u672A\u77E5"}\uFF0C\u672C\u79BB\u7EBF\u5305\u7248\u672C\u4E3A ${SERVICE_VERSION}\u3002\u8BF7\u505C\u6B62\u65E7\u670D\u52A1\u5E76\u4ECE\u5320\u5B9D\u6258\u76D8\u5B8C\u5168\u9000\u51FA\u540E\u91CD\u5F00\u3002`);
+  }
   const runtime = await fetch(base + "/runtime", { headers: { Authorization: `Bearer ${config2.serviceToken}` }, signal: AbortSignal.timeout(5e3) });
   if (!runtime.ok) throw new Error(`Runtime authentication HTTP ${runtime.status}`);
   const identity = await runtime.json();
@@ -19247,13 +19273,7 @@ if (path4.resolve(process.argv[1] || "") === fileURLToPath(import.meta.url)) {
       if (values.config) throw new Error("--desktop \u4F7F\u7528 Harness \u6839\u76EE\u5F55\u914D\u7F6E\uFF0C\u4E0D\u80FD\u540C\u65F6\u4F20\u5165 --config");
       const harnessHome = commandHarnessHome(values["harness-home"]);
       if (!harnessHome || !path4.isAbsolute(harnessHome)) throw new Error("\u8BF7\u63D0\u4F9B Harness \u7684\u7EDD\u5BF9\u8DEF\u5F84");
-      const entry = path4.join(harnessHome, "profiles/desktop/node_modules/dsh-plugin-tbea-knowledge");
-      const packageRoot = await fs2.realpath(entry).catch((error2) => {
-        if (error2.code === "ENOENT") throw new Error(`\u672A\u627E\u5230\u5320\u5B9D desktop \u63D2\u4EF6\u5165\u53E3\uFF1A${entry}`, { cause: error2 });
-        throw error2;
-      });
-      const manifest = JSON.parse(await fs2.readFile(path4.join(packageRoot, "package.json"), "utf8"));
-      console.log(`Desktop plugin: ${manifest.version}; ${packageRoot}`);
+      await checkDesktopPlugin(harnessHome);
       const { filename, options } = desktopConfigLocations(harnessHome);
       await diagnose(filename, options);
     } else {

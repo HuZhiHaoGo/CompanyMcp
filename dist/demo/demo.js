@@ -23587,6 +23587,111 @@ var require_client = __commonJS({
   }
 });
 
+// src/contracts.ts
+function isRecord(value) {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+function hasCode(error, code) {
+  return isRecord(error) && error.code === code;
+}
+var init_contracts = __esm({
+  "src/contracts.ts"() {
+    "use strict";
+  }
+});
+
+// plugin/src/pdf-range.ts
+function retryAfter(ms, signal) {
+  return new Promise((resolve, reject) => {
+    signal.throwIfAborted();
+    const timer = setTimeout(() => {
+      signal.removeEventListener("abort", cancel);
+      resolve();
+    }, ms);
+    const cancel = () => {
+      clearTimeout(timer);
+      reject(signal.reason);
+    };
+    signal.addEventListener("abort", cancel, { once: true });
+  });
+}
+function createPdfRangeReader(bridge, previewId, signal, onData, onError) {
+  const queue = [];
+  let active = 0;
+  let stopped = false;
+  signal.addEventListener("abort", () => {
+    queue.length = 0;
+  }, { once: true });
+  async function readChunk(begin, end) {
+    for (let retries = 0; ; retries++) {
+      signal.throwIfAborted();
+      try {
+        const chunk = await bridge("library-pdf-range", { previewId, begin, end }, signal);
+        if (chunk.bytes.length !== end - begin) {
+          throw Object.assign(new Error("PDF \u6570\u636E\u8BFB\u53D6\u4E0D\u5B8C\u6574\u3002"), { code: "PDF_RANGE_INCOMPLETE" });
+        }
+        return chunk.bytes;
+      } catch (error) {
+        signal.throwIfAborted();
+        const delay = retryDelays[retries];
+        if (!hasCode(error, "SERVICE_BUSY") || delay === void 0) throw new PdfRangeError(error, begin, end, retries);
+        await retryAfter(delay, signal);
+      }
+    }
+  }
+  async function read(begin, end) {
+    const result = new Uint8Array(end - begin);
+    for (let offset = begin; offset < end; offset += requestBytes) {
+      const limit = Math.min(end, offset + requestBytes);
+      result.set(await readChunk(offset, limit), offset - begin);
+    }
+    if (!signal.aborted && !stopped) onData(begin, result);
+  }
+  function drain() {
+    while (!signal.aborted && !stopped && active < maxReads && queue.length) {
+      const range = queue.shift();
+      active++;
+      void read(range.begin, range.end).catch((error) => {
+        if (signal.aborted || stopped) return;
+        stopped = true;
+        queue.length = 0;
+        onError(error);
+      }).finally(() => {
+        active--;
+        drain();
+      });
+    }
+  }
+  return (begin, end) => {
+    if (signal.aborted || stopped) return;
+    queue.push({ begin, end });
+    drain();
+  };
+}
+var requestBytes, maxReads, retryDelays, PdfRangeError;
+var init_pdf_range = __esm({
+  "plugin/src/pdf-range.ts"() {
+    "use strict";
+    init_contracts();
+    requestBytes = 1024 * 1024;
+    maxReads = 2;
+    retryDelays = [150, 300];
+    PdfRangeError = class extends Error {
+      code;
+      begin;
+      end;
+      retries;
+      constructor(error, begin, end, retries) {
+        super(hasCode(error, "SERVICE_BUSY") ? "PDF \u8BFB\u53D6\u7E41\u5FD9\uFF0C\u8BF7\u7A0D\u540E\u91CD\u8BD5\u3002" : error instanceof Error ? error.message : "PDF \u6570\u636E\u8BFB\u53D6\u5931\u8D25\u3002", { cause: error });
+        this.code = isRecord(error) && typeof error.code === "string" ? error.code : "PDF_RANGE_FAILED";
+        this.begin = begin;
+        this.end = end;
+        this.retries = retries;
+      }
+    };
+  }
+});
+
 // plugin/src/pdf-viewer.tsx
 function PreviewMeter({ label, elapsedMs, received, total }) {
   const [seconds, setSeconds] = (0, import_react3.useState)(0);
@@ -23610,7 +23715,7 @@ function pdfError(error) {
 }
 function PdfViewer({ bridge, previewId, bytes, assetPath, restart }) {
   const [documentPdf, setDocumentPdf] = (0, import_react3.useState)();
-  const [failure, setFailure] = (0, import_react3.useState)("");
+  const [failure, setFailure] = (0, import_react3.useState)();
   const [attempt, setAttempt] = (0, import_react3.useState)(0);
   const [firstPageReady, setFirstPageReady] = (0, import_react3.useState)(false);
   const scrollRoot = (0, import_react3.useRef)(null);
@@ -23618,8 +23723,9 @@ function PdfViewer({ bridge, previewId, bytes, assetPath, restart }) {
     started: performance.now(),
     sent: false
   });
-  const report = (0, import_react3.useCallback)((status) => {
-    if (metric.current.sent) return;
+  const report = (0, import_react3.useCallback)((status, failure2) => {
+    const afterFirstPage = metric.current.sent;
+    if (afterFirstPage && failure2?.phase !== "range") return;
     metric.current.sent = true;
     const { started, assetReady, documentReady } = metric.current;
     const elapsedMs = Math.round(performance.now() - started);
@@ -23629,11 +23735,12 @@ function PdfViewer({ bridge, previewId, bytes, assetPath, restart }) {
       "library-preview-result",
       {
         previewId,
-        status,
+        status: afterFirstPage ? "range-failed" : status,
         elapsedMs,
         pdfAssetMs: assetMs,
         ...assetReady !== void 0 && { pdfLoadMs: loadedMs - assetMs },
-        ...documentReady !== void 0 && { pdfRenderMs: elapsedMs - loadedMs }
+        ...documentReady !== void 0 && !afterFirstPage && { pdfRenderMs: elapsedMs - loadedMs },
+        ...failure2 && { pdfFailure: JSON.stringify(failure2) }
       },
       AbortSignal.timeout(5e3)
     ).catch(() => {
@@ -23642,8 +23749,8 @@ function PdfViewer({ bridge, previewId, bytes, assetPath, restart }) {
   const firstPage = (0, import_react3.useCallback)((error) => {
     if (metric.current.sent) return;
     if (error) {
-      setFailure(error);
-      report("render-failed");
+      setFailure({ message: error });
+      report("render-failed", { phase: "render", errorCode: "PDF_RENDER_FAILED" });
     } else {
       setFirstPageReady(true);
       report("ready");
@@ -23654,7 +23761,7 @@ function PdfViewer({ bridge, previewId, bytes, assetPath, restart }) {
     metric.current = { started: performance.now(), sent: false };
     setFirstPageReady(false);
     setDocumentPdf(void 0);
-    setFailure("");
+    setFailure(void 0);
     let loading;
     const dispose = () => {
       controller.abort();
@@ -23664,9 +23771,11 @@ function PdfViewer({ bridge, previewId, bytes, assetPath, restart }) {
     };
     const fail = (error) => {
       if (controller.signal.aborted) return;
-      setFailure(pdfError(error));
       const name = error instanceof Error ? error.name : "";
-      report(name === "PasswordException" ? "password" : name === "InvalidPDFException" ? "invalid-pdf" : "load-failed");
+      const status = name === "PasswordException" ? "password" : name === "InvalidPDFException" ? "invalid-pdf" : "load-failed";
+      const failure2 = error instanceof PdfRangeError ? { phase: "range", errorCode: error.code, begin: error.begin, end: error.end, retries: error.retries } : metric.current.assetReady === void 0 ? { phase: "asset", errorCode: "PDF_ASSET_FAILED" } : { phase: "load", errorCode: status === "invalid-pdf" ? "INVALID_PDF" : status === "password" ? "PDF_PASSWORD" : "PDF_LOAD_FAILED" };
+      setFailure({ message: pdfError(error), reopen: failure2.errorCode === "PREVIEW_NOT_FOUND" });
+      report(status, failure2);
       dispose();
     };
     async function loadPdf() {
@@ -23675,19 +23784,13 @@ function PdfViewer({ bridge, previewId, bytes, assetPath, restart }) {
       metric.current.assetReady = performance.now();
       engine.GlobalWorkerOptions.workerSrc = assetUrl(assetPath, "pdf.worker.mjs");
       const transport = new engine.PDFDataRangeTransport(bytes, null, true);
-      const read = async (begin, end) => {
-        const result = new Uint8Array(end - begin);
-        for (let offset = begin; offset < end; offset += requestBytes) {
-          const limit = Math.min(end, offset + requestBytes);
-          const chunk = await bridge("library-pdf-range", { previewId, begin: offset, end: limit }, controller.signal);
-          if (chunk.bytes.length !== limit - offset) throw new Error("PDF \u6570\u636E\u8BFB\u53D6\u4E0D\u5B8C\u6574\u3002");
-          result.set(chunk.bytes, offset - begin);
-        }
-        if (!controller.signal.aborted) transport.onDataRange(begin, result);
-      };
-      transport.requestDataRange = (begin, end) => {
-        void read(begin, end).catch(fail);
-      };
+      transport.requestDataRange = createPdfRangeReader(
+        bridge,
+        previewId,
+        controller.signal,
+        (begin, data) => transport.onDataRange(begin, data),
+        fail
+      );
       transport.abort = () => controller.abort();
       loading = engine.getDocument({
         range: transport,
@@ -23708,7 +23811,7 @@ function PdfViewer({ bridge, previewId, bytes, assetPath, restart }) {
     void loadPdf().catch(fail);
     return dispose;
   }, [bridge, previewId, bytes, assetPath, attempt, report]);
-  if (failure) return /* @__PURE__ */ import_react3.default.createElement("div", { className: "tbea-library-state tbea-library-error", role: "alert" }, /* @__PURE__ */ import_react3.default.createElement("span", null, failure), /* @__PURE__ */ import_react3.default.createElement("button", { type: "button", className: "tbea-library-button", onClick: () => failure.includes("\u9884\u89C8\u5DF2\u8FC7\u671F") ? restart() : setAttempt((value) => value + 1) }, "\u91CD\u8BD5"));
+  if (failure) return /* @__PURE__ */ import_react3.default.createElement("div", { className: "tbea-library-state tbea-library-error", role: "alert" }, /* @__PURE__ */ import_react3.default.createElement("span", null, failure.message), /* @__PURE__ */ import_react3.default.createElement("button", { type: "button", className: "tbea-library-button", onClick: () => failure.reopen ? restart() : setAttempt((value) => value + 1) }, "\u91CD\u8BD5"));
   return /* @__PURE__ */ import_react3.default.createElement(import_react3.default.Fragment, null, !firstPageReady && /* @__PURE__ */ import_react3.default.createElement(PreviewMeter, { label: "\u6B63\u5728\u52A0\u8F7D\u9996\u9875\u2026" }), documentPdf && /* @__PURE__ */ import_react3.default.createElement("div", { className: "tbea-library-pages", ref: scrollRoot, tabIndex: 0, "aria-label": "PDF \u67E5\u770B\u5668\uFF0C\u6EDA\u52A8\u8FDE\u7EED\u9605\u8BFB" }, Array.from({ length: firstPageReady ? documentPdf.pdf.numPages : 1 }, (_, index) => /* @__PURE__ */ import_react3.default.createElement(PdfPage, { key: index, ...documentPdf, number: index + 1, root: scrollRoot, onFirstPage: index === 0 ? firstPage : void 0 }))));
 }
 function PdfPage({ pdf, disableAnnotations, number, root, onFirstPage }) {
@@ -23754,12 +23857,12 @@ function PdfPage({ pdf, disableAnnotations, number, root, onFirstPage }) {
   }, [near, number, pdf, disableAnnotations, onFirstPage]);
   return /* @__PURE__ */ import_react3.default.createElement("figure", { className: "tbea-library-page", ref: element }, /* @__PURE__ */ import_react3.default.createElement("div", { className: "tbea-library-sheet", style: { aspectRatio: ratio } }, error ? /* @__PURE__ */ import_react3.default.createElement("div", { className: "tbea-library-state tbea-library-error", role: "alert" }, error) : near && /* @__PURE__ */ import_react3.default.createElement("canvas", { ref: surface, className: "tbea-library-pdf-page", role: "img", "aria-label": `\u539F\u6587\u7B2C ${number} \u9875` })), /* @__PURE__ */ import_react3.default.createElement("figcaption", null, "\u7B2C ", number, " \u9875"));
 }
-var import_react3, requestBytes;
+var import_react3;
 var init_pdf_viewer = __esm({
   "plugin/src/pdf-viewer.tsx"() {
     "use strict";
     import_react3 = __toESM(require_react(), 1);
-    requestBytes = 1024 * 1024;
+    init_pdf_range();
   }
 });
 
@@ -24330,6 +24433,9 @@ function TextPreview({ bridge, previewId, html }) {
 // plugin/src/cited-documents-view.tsx
 var import_react6 = __toESM(require_react(), 1);
 
+// plugin/src/cited-documents.ts
+init_contracts();
+
 // plugin/src/client.jsx
 function KnowledgeSelection({ selection: selection2, selectionSessionId }) {
   const subscribe = (0, import_react7.useCallback)((listener) => selection2.subscribe(selectionSessionId, listener), [selection2, selectionSessionId]);
@@ -24559,7 +24665,10 @@ function Demo() {
 }
 var libraryBridge = async (endpoint, args, signal) => {
   const response = await fetch(`/demo/library/${endpoint.slice(8)}?${new URLSearchParams(args)}`, { signal });
-  if (!response.ok) throw new Error((await response.json()).message || `HTTP ${response.status}`);
+  if (!response.ok) {
+    const error = await response.json().catch(() => null);
+    throw Object.assign(new Error(error?.message || `HTTP ${response.status}`), { code: error?.code });
+  }
   if (endpoint === "library-pdf-range" || endpoint === "library-sheet-range") return { bytes: new Uint8Array(await response.arrayBuffer()), mediaType: response.headers.get("content-type") };
   return response.json();
 };

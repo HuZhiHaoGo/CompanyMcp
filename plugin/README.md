@@ -1,12 +1,14 @@
 # DSH 公司知识展示插件
 
-目标运行时为匠宝 Harness **0.2.2-rc.1**，同时接受 **0.2.2-alpha.2**。Host 与浏览器产物均已打包。
+插件版本为 **0.11.17**。目标运行时为匠宝 Harness **0.2.2-rc.1**，同时接受 **0.2.2-alpha.2**。Host 与浏览器产物均已打包。
 
 通过 `dsh.bundle.patch` 注册 Host 插件，通过 `dsh.client` 与 `./client` 注册浏览器插件。使用正式 `tool.call.toolview` keyed slot，不修改 DSH 内部组件，不依赖视觉模型。
 
 包含两个工具：`mcp__tbea__search_knowledge`、`mcp__tbea__get_chunk_detail`。Host 使用标准 MCP 客户端连接知识服务。`output.render` 输出文字证据，`output.presentationMeta` 存放快照标识、覆盖状态等展示字段。展示层通过 Connection 的同源鉴权接口获取图片。
 
 匠宝管理员可在解压包的 `plugin/config/example.json` 直接填写正式配置，再在「插件管理」中添加并启用同一份 `plugin`。首次启用时插件会从该模板自动创建 `DSH_HOME` 下的 `dsh-mcp-tbea-knowledge.json`。已有配置会继续使用。新装默认启用原文预览。Excel 在面板直接查看，Word 和 PPT 调用匠宝内置服务转换为 PDF，PDF 由 PDF.js 显示。Markdown 和纯文本直接展示。普通 Harness Profile 与旧版的显式 `configFile` 部署继续使用原有初始化方式。
+
+PDF 查看器每次最多并行读取两个分块。遇到服务繁忙时会自动重试最多两次，仍失败时可点击「重试」。切换文档或关闭预览会取消该查看器的读取请求。 [预览进度与权限说明](../docs/使用与维护手册.md#预览进度与权限说明)
 
 具体安装、正式配置、故障排查和卸载见 [使用与维护手册](../docs/使用与维护手册.md)。
 

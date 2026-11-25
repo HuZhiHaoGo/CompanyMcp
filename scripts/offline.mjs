@@ -68,10 +68,11 @@ const rootName = path.basename(output);
 const releaseDir = path.dirname(output);
 const archive = path.join(releaseDir, rootName + '-win-x64.zip');
 const temporary = path.join(releaseDir, '.' + rootName + '-' + process.pid + '.zip');
+const installerArchive = rootName + '/plugin.zip';
 const tar = path.join(process.env.SystemRoot || 'C:/Windows', 'System32', 'tar.exe');
 const run = promisify(execFile);
 try {
-  await run(tar, ['-a', '-cf', temporary, '-C', releaseDir, rootName], { windowsHide: true });
+  await run(tar, ['-a', '--options', 'zip:hdrcharset=UTF-8', '--exclude', installerArchive, '-cf', temporary, '-C', releaseDir, rootName], { windowsHide: true });
   const { stdout } = await run(tar, ['-tf', temporary], { windowsHide: true, maxBuffer: 16 * 1024 * 1024 });
   const entries = new Set(stdout.trim().split(/\r?\n/));
   for (const name of [
@@ -84,7 +85,7 @@ try {
   }
   for (const entry of entries) {
     const relative = entry.slice(rootName.length + 1);
-    if (!entry.startsWith(rootName + '/') || isDeploymentFile(relative) || converterEntry.test(relative) || /^(?:data(?:\/|$)|(?:plugin\/)?config\/(?:local\.json|generated-profile\.patch\.yml)$)/i.test(relative) || /(?:^|\/)dsh-mcp-tbea-knowledge\.json$/i.test(relative)) {
+    if (entry === installerArchive || !entry.startsWith(rootName + '/') || isDeploymentFile(relative) || converterEntry.test(relative) || /^(?:data(?:\/|$)|(?:plugin\/)?config\/(?:local\.json|generated-profile\.patch\.yml)$)/i.test(relative) || /(?:^|\/)dsh-mcp-tbea-knowledge\.json$/i.test(relative)) {
       throw new Error('Unexpected offline archive entry: ' + entry);
     }
   }
@@ -95,5 +96,6 @@ try {
 console.log(`Offline runtime prepared: ${output}\n匠宝首次启用会使用包内 plugin/${DESKTOP_CONFIG_TEMPLATE} 初始化缺失的配置。`);
 console.log('Offline ZIP prepared: ' + archive);
 const files = await fs.readdir(output, { recursive: true, withFileTypes: true });
-const sizes = await Promise.all(files.filter(file => file.isFile()).map(file => fs.stat(path.join(file.parentPath, file.name))));
+const sizes = await Promise.all(files.filter(file => file.isFile() && path.join(file.parentPath, file.name) !== path.join(output, 'plugin.zip'))
+  .map(file => fs.stat(path.join(file.parentPath, file.name))));
 console.log(`ZIP ${(await fs.stat(archive)).size} bytes; extracted ${sizes.reduce((sum, file) => sum + file.size, 0)} bytes`);

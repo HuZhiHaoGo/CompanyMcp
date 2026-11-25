@@ -3,7 +3,7 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import type { Fetcher, ServiceConfig } from './contracts.ts';
-import { previewEnabled } from './contracts.ts';
+import { hasCode, isRecord, previewEnabled } from './contracts.ts';
 import { appendDiagnostic, diagnosticErrorCode, diagnosticId, timePreview } from './diagnostics.ts';
 import type { PreviewTiming } from './diagnostics.ts';
 import { describeDocument, listDocuments } from './documents.ts';
@@ -11,6 +11,7 @@ import { downloadDocument, preparePreviewDocument, previewStatus, spreadsheetFor
 import { convertHostOffice, isHostOfficeFormat } from './office-preview.ts';
 import type { OfficeToPdf } from './office-preview.ts';
 import { officeUnavailable } from './preview-messages.ts';
+import type { PdfFailure } from './preview-messages.ts';
 import { samplePreviewPdf } from './pdf-preview.ts';
 import { SearchGate } from './gate.ts';
 import type { KnowledgeService } from './knowledge.ts';
@@ -42,7 +43,21 @@ interface Preview {
 type Phase = 'queued' | 'details' | 'downloading' | 'converting' | 'preparing-text';
 type Progress = { phase: Phase; startedAt: number; received?: number; total?: number };
 const pdfTimingKeys = ['pdfAssetMs', 'pdfLoadMs', 'pdfRenderMs'] as const;
-type PdfTimings = Partial<Record<typeof pdfTimingKeys[number], string | null>>;
+type PdfMetrics = Partial<Record<typeof pdfTimingKeys[number] | 'pdfFailure', string | null>>;
+
+function parsePdfFailure(raw: string): PdfFailure {
+  const value: unknown = raw.length <= 512 ? JSON.parse(raw) : null;
+  if (isRecord(value) && typeof value.errorCode === 'string' && /^[A-Z][A-Z0-9_]{0,63}$/u.test(value.errorCode)) {
+    const { phase, errorCode, begin, end, retries } = value;
+    if (phase === 'asset' || phase === 'load' || phase === 'render') return { phase, errorCode };
+    if (phase === 'range' && typeof begin === 'number' && Number.isSafeInteger(begin) && begin >= 0
+      && typeof end === 'number' && Number.isSafeInteger(end) && end > begin && end - begin <= 1024 * 1024
+      && typeof retries === 'number' && Number.isInteger(retries) && retries >= 0 && retries <= 2) {
+      return { phase, errorCode, begin, end, retries };
+    }
+  }
+  throw new Error('Invalid PDF failure');
+}
 
 export class LibraryBrowser {
   private readonly lifetime = new AbortController();
@@ -278,27 +293,46 @@ export class LibraryBrowser {
   }
 
   async previewResult(id: string | null, status: string | null, elapsed: string | null, signal: AbortSignal, parseElapsed: string | null = null,
-    pdfTimings: PdfTimings = {}) {
+    pdfMetrics: PdfMetrics = {}) {
     const ms = Number(elapsed);
-    if (!status || !['ready', 'password', 'invalid-pdf', 'load-failed', 'render-failed', 'invalid-sheet', 'sheet-too-large', 'sheet-timeout'].includes(status)
+    if (!status || !['ready', 'password', 'invalid-pdf', 'load-failed', 'render-failed', 'range-failed', 'invalid-sheet', 'sheet-too-large', 'sheet-timeout'].includes(status)
       || !elapsed || !Number.isSafeInteger(ms) || ms < 0 || ms > 600000) throw new PlatformError('INVALID_PREVIEW_RESULT', '无效的预览结果');
     const parseMs = parseElapsed === null ? undefined : Number(parseElapsed);
     if (parseMs !== undefined && (!Number.isSafeInteger(parseMs) || parseMs < 0 || parseMs > ms)) throw new PlatformError('INVALID_PREVIEW_RESULT', '无效的解析耗时');
     const pdfParts: Partial<Record<typeof pdfTimingKeys[number], number>> = {};
     let pdfTotal = 0;
     for (const key of pdfTimingKeys) {
-      const value = pdfTimings[key];
+      const value = pdfMetrics[key];
       if (value == null) continue;
       if (!/^\d+$/u.test(value)) throw new PlatformError('INVALID_PREVIEW_RESULT', '无效的 PDF 阶段耗时');
       pdfParts[key] = Number(value);
       pdfTotal += pdfParts[key];
     }
     if (pdfTotal > ms) throw new PlatformError('INVALID_PREVIEW_RESULT', '无效的 PDF 阶段耗时');
-    return this.withPreview(id, signal, async preview => {
-      await appendDiagnostic(this.config, { event: preview.sheet ? 'tbea-preview-first-sheet' : 'tbea-preview-first-page',
-        previewId: preview.id, format: preview.format, status, parseMs, ...(preview.pdfBytes && pdfParts), ms });
+    let pdfFailure: PdfFailure | undefined;
+    if (pdfMetrics.pdfFailure != null) {
+      try { pdfFailure = parsePdfFailure(pdfMetrics.pdfFailure); }
+      catch { throw new PlatformError('INVALID_PREVIEW_RESULT', '无效的 PDF 错误诊断'); }
+    }
+    if ((pdfFailure && !['password', 'invalid-pdf', 'load-failed', 'render-failed', 'range-failed'].includes(status))
+      || (status === 'range-failed' && pdfFailure?.phase !== 'range')) {
+      throw new PlatformError('INVALID_PREVIEW_RESULT', '无效的 PDF 错误诊断');
+    }
+    const event = status === 'range-failed' ? 'tbea-preview-pdf-failure' : 'tbea-preview-first-page';
+    try {
+      return await this.withPreview(id, signal, async preview => {
+        if (pdfFailure && !preview.pdfBytes) throw new PlatformError('INVALID_PREVIEW_RESULT', '无效的 PDF 错误诊断');
+        await appendDiagnostic(this.config, { event: preview.sheet ? 'tbea-preview-first-sheet' : event, previewId: preview.id,
+          format: preview.format, status, parseMs, ...(preview.pdfBytes && pdfParts), pdfFailure, ms });
+        return { recorded: true };
+      });
+    } catch (error) {
+      // 分块请求发现预览过期时，原预览记录可能已经被清理。
+      if (pdfFailure?.phase !== 'range' || pdfFailure.errorCode !== 'PREVIEW_NOT_FOUND' || !hasCode(error, 'PREVIEW_NOT_FOUND')
+        || !id || !/^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/u.test(id)) throw error;
+      await appendDiagnostic(this.config, { event, previewId: id, status, ...pdfParts, pdfFailure, ms });
       return { recorded: true };
-    });
+    }
   }
 
   async pdfRange(id: string | null, begin: string | null, end: string | null, signal: AbortSignal) {

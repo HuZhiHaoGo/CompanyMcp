@@ -2,8 +2,8 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import type { RefObject } from 'react';
 import type { PDFDocumentLoadingTask, PDFDocumentProxy } from 'pdfjs-dist';
 import type { LibraryBridge } from './library-browser.tsx';
-
-const requestBytes = 1024 * 1024;
+import type { PdfFailure } from '../../src/preview-messages.ts';
+import { createPdfRangeReader, PdfRangeError } from './pdf-range.ts';
 
 export function PreviewMeter({ label, elapsedMs, received, total }: { label: string; elapsedMs?: number; received?: number; total?: number }) {
   const [seconds, setSeconds] = useState(0);
@@ -35,28 +35,30 @@ export function PdfViewer({ bridge, previewId, bytes, assetPath, restart }: {
   bridge: LibraryBridge; previewId: string; bytes: number; assetPath: string; restart: () => void;
 }) {
   const [documentPdf, setDocumentPdf] = useState<{ pdf: PDFDocumentProxy; disableAnnotations: number }>();
-  const [failure, setFailure] = useState('');
+  const [failure, setFailure] = useState<{ message: string; reopen?: boolean }>();
   const [attempt, setAttempt] = useState(0);
   const [firstPageReady, setFirstPageReady] = useState(false);
   const scrollRoot = useRef<HTMLDivElement>(null);
   const metric = useRef<{ started: number; sent: boolean; assetReady?: number; documentReady?: number }>({
     started: performance.now(), sent: false,
   });
-  const report = useCallback((status: 'ready' | 'password' | 'invalid-pdf' | 'load-failed' | 'render-failed') => {
-    if (metric.current.sent) return;
+  const report = useCallback((status: 'ready' | 'password' | 'invalid-pdf' | 'load-failed' | 'render-failed', failure?: PdfFailure) => {
+    const afterFirstPage = metric.current.sent;
+    if (afterFirstPage && failure?.phase !== 'range') return;
     metric.current.sent = true;
     const { started, assetReady, documentReady } = metric.current;
     const elapsedMs = Math.round(performance.now() - started);
     const assetMs = assetReady === undefined ? elapsedMs : Math.round(assetReady - started);
     const loadedMs = documentReady === undefined ? elapsedMs : Math.round(documentReady - started);
-    void bridge('library-preview-result', { previewId, status, elapsedMs, pdfAssetMs: assetMs,
+    void bridge('library-preview-result', { previewId, status: afterFirstPage ? 'range-failed' : status, elapsedMs, pdfAssetMs: assetMs,
       ...(assetReady !== undefined && { pdfLoadMs: loadedMs - assetMs }),
-      ...(documentReady !== undefined && { pdfRenderMs: elapsedMs - loadedMs }) },
+      ...(documentReady !== undefined && !afterFirstPage && { pdfRenderMs: elapsedMs - loadedMs }),
+      ...(failure && { pdfFailure: JSON.stringify(failure) }) },
       AbortSignal.timeout(5000)).catch(() => {});
   }, [bridge, previewId]);
   const firstPage = useCallback((error?: string) => {
     if (metric.current.sent) return;
-    if (error) { setFailure(error); report('render-failed'); }
+    if (error) { setFailure({ message: error }); report('render-failed', { phase: 'render', errorCode: 'PDF_RENDER_FAILED' }); }
     else { setFirstPageReady(true); report('ready'); }
   }, [report]);
   useEffect(() => {
@@ -64,7 +66,7 @@ export function PdfViewer({ bridge, previewId, bytes, assetPath, restart }: {
     metric.current = { started: performance.now(), sent: false };
     setFirstPageReady(false);
     setDocumentPdf(undefined);
-    setFailure('');
+    setFailure(undefined);
     let loading: PDFDocumentLoadingTask | undefined;
     const dispose = () => {
       controller.abort();
@@ -73,9 +75,14 @@ export function PdfViewer({ bridge, previewId, bytes, assetPath, restart }: {
     };
     const fail = (error: unknown) => {
       if (controller.signal.aborted) return;
-      setFailure(pdfError(error));
       const name = error instanceof Error ? error.name : '';
-      report(name === 'PasswordException' ? 'password' : name === 'InvalidPDFException' ? 'invalid-pdf' : 'load-failed');
+      const status = name === 'PasswordException' ? 'password' : name === 'InvalidPDFException' ? 'invalid-pdf' : 'load-failed';
+      const failure: PdfFailure = error instanceof PdfRangeError
+        ? { phase: 'range', errorCode: error.code, begin: error.begin, end: error.end, retries: error.retries }
+        : metric.current.assetReady === undefined ? { phase: 'asset', errorCode: 'PDF_ASSET_FAILED' }
+          : { phase: 'load', errorCode: status === 'invalid-pdf' ? 'INVALID_PDF' : status === 'password' ? 'PDF_PASSWORD' : 'PDF_LOAD_FAILED' };
+      setFailure({ message: pdfError(error), reopen: failure.errorCode === 'PREVIEW_NOT_FOUND' });
+      report(status, failure);
       dispose();
     };
 
@@ -85,17 +92,8 @@ export function PdfViewer({ bridge, previewId, bytes, assetPath, restart }: {
       metric.current.assetReady = performance.now();
       engine.GlobalWorkerOptions.workerSrc = assetUrl(assetPath, 'pdf.worker.mjs');
       const transport = new engine.PDFDataRangeTransport(bytes, null, true);
-      const read = async (begin: number, end: number) => {
-        const result = new Uint8Array(end - begin);
-        for (let offset = begin; offset < end; offset += requestBytes) {
-          const limit = Math.min(end, offset + requestBytes);
-          const chunk = await bridge('library-pdf-range', { previewId, begin: offset, end: limit }, controller.signal);
-          if (chunk.bytes.length !== limit - offset) throw new Error('PDF 数据读取不完整。');
-          result.set(chunk.bytes, offset - begin);
-        }
-        if (!controller.signal.aborted) transport.onDataRange(begin, result);
-      };
-      transport.requestDataRange = (begin, end) => { void read(begin, end).catch(fail); };
+      transport.requestDataRange = createPdfRangeReader(bridge, previewId, controller.signal,
+        (begin, data) => transport.onDataRange(begin, data), fail);
       transport.abort = () => controller.abort();
 
       loading = engine.getDocument({ range: transport, disableStream: true, disableAutoFetch: true,
@@ -111,8 +109,8 @@ export function PdfViewer({ bridge, previewId, bytes, assetPath, restart }: {
     return dispose;
   }, [bridge, previewId, bytes, assetPath, attempt, report]);
 
-  if (failure) return <div className="tbea-library-state tbea-library-error" role="alert"><span>{failure}</span>
-    <button type="button" className="tbea-library-button" onClick={() => failure.includes('预览已过期') ? restart() : setAttempt(value => value + 1)}>重试</button>
+  if (failure) return <div className="tbea-library-state tbea-library-error" role="alert"><span>{failure.message}</span>
+    <button type="button" className="tbea-library-button" onClick={() => failure.reopen ? restart() : setAttempt(value => value + 1)}>重试</button>
   </div>;
   return <>
     {!firstPageReady && <PreviewMeter label="正在加载首页…" />}

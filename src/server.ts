@@ -146,7 +146,7 @@ export async function createKnowledgeServer(config: ServiceConfig, options: Serv
       case '/open': return send(res, 200, await library.open(args.get('libraryId'), args.get('documentId'), signal));
       case '/preview-progress': return send(res, 200, await library.previewProgress(args.get('libraryId'), args.get('documentId'), signal));
       case '/preview-result': return send(res, 200, await library.previewResult(args.get('previewId'), args.get('status'), args.get('elapsedMs'), signal, args.get('parseMs'), {
-        pdfAssetMs: args.get('pdfAssetMs'), pdfLoadMs: args.get('pdfLoadMs'), pdfRenderMs: args.get('pdfRenderMs'),
+        pdfAssetMs: args.get('pdfAssetMs'), pdfLoadMs: args.get('pdfLoadMs'), pdfRenderMs: args.get('pdfRenderMs'), pdfFailure: args.get('pdfFailure'),
       }));
       case '/pdf-range': return send(res, 200, await library.pdfRange(args.get('previewId'), args.get('begin'), args.get('end'), signal), 'application/octet-stream');
       case '/sheet-range': return send(res, 200, await library.sheetRange(args.get('previewId'), args.get('begin'), args.get('end'), signal), 'application/octet-stream');

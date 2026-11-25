@@ -262,10 +262,27 @@ test('PDF 原件直接按鉴权和区间读取，保存首屏诊断', async t =>
     assert.equal((await fetch(metricUrl + '&pdfRenderMs=36', { headers })).status, 400);
     const metric = await fetch(metricUrl + '&pdfAssetMs=5&pdfLoadMs=15&pdfRenderMs=15', { headers });
     assert.equal((await metric.json()).recorded, true);
+    const reportFailure = (status, pdfFailure, previewId = preview.previewId) => fetch(`${base}/library/preview-result?${new URLSearchParams({
+      previewId, status, elapsedMs: '35', pdfFailure: JSON.stringify(pdfFailure),
+    })}`, { headers });
+    const busy = { phase: 'range', errorCode: 'SERVICE_BUSY', begin: 0, end: 5, retries: 2 };
+    const expiredId = '00000000-0000-4000-8000-000000000001';
+    assert.equal((await reportFailure('load-failed', { ...busy, retries: 3 })).status, 400);
+    assert.equal((await reportFailure('load-failed', { ...busy, errorCode: 'https://fixture-private' })).status, 400);
+    assert.equal((await reportFailure('load-failed', busy, expiredId)).status, 404);
+    assert.equal((await reportFailure('load-failed', { ...busy, message: 'fixture-private' })).status, 200);
+    assert.equal((await reportFailure('range-failed', busy)).status, 200);
+    assert.equal((await reportFailure('invalid-pdf', { phase: 'load', errorCode: 'INVALID_PDF' })).status, 200);
+    const expired = { ...busy, errorCode: 'PREVIEW_NOT_FOUND', retries: 0 };
+    assert.equal((await reportFailure('load-failed', expired, expiredId)).status, 200);
     const logs = (await fs.readFile(path.join(directory, 'logs/dsh-mcp-tbea-knowledge.jsonl'), 'utf8')).trim().split('\n').map(JSON.parse);
     assert.ok(logs.some(row => row.event === 'tbea-preview-prepare' && row.timing.some(step => step.phase === 'downloading')));
     const firstPage = logs.find(row => row.event === 'tbea-preview-first-page' && row.status === 'ready');
     assert.deepEqual([firstPage.pdfAssetMs, firstPage.pdfLoadMs, firstPage.pdfRenderMs], [5, 15, 15]);
+    assert.deepEqual(logs.find(row => row.event === 'tbea-preview-first-page' && row.status === 'load-failed').pdfFailure, busy);
+    assert.deepEqual(logs.find(row => row.event === 'tbea-preview-pdf-failure').pdfFailure, busy);
+    assert.deepEqual(logs.find(row => row.status === 'invalid-pdf').pdfFailure, { phase: 'load', errorCode: 'INVALID_PDF' });
+    assert.deepEqual(logs.find(row => row.previewId === expiredId).pdfFailure, expired);
     assert.doesNotMatch(JSON.stringify(logs), /fixture-private|X-Amz|验证.pdf/);
   } finally { await app.close(); }
 });

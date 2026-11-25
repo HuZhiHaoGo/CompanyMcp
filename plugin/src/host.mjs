@@ -200,7 +200,7 @@ export async function apply(ctx, config = {}) {
       }
       const url = new URL(libraryAction ? `/library/${libraryAction}` : endpoint === 'asset' ? '/asset' : '/snapshot', base);
       if (libraryAction) {
-        for (const key of ['libraryId', 'documentId', 'previewId', 'status', 'elapsedMs', 'parseMs', 'pdfAssetMs', 'pdfLoadMs', 'pdfRenderMs', 'begin', 'end']) {
+        for (const key of ['libraryId', 'documentId', 'previewId', 'status', 'elapsedMs', 'parseMs', 'pdfAssetMs', 'pdfLoadMs', 'pdfRenderMs', 'pdfFailure', 'begin', 'end']) {
           const value = args?.[key];
           if (typeof value === 'string' || typeof value === 'number') url.searchParams.set(key, String(value));
         }

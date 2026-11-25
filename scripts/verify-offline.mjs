@@ -15,7 +15,10 @@ let child;
 try {
   await run(tar, ['-xf', archive, '-C', directory], { windowsHide: true });
   const root = path.join(directory, 'dsh-mcp-tbea-knowledge');
+  const manual = await fs.readFile(path.join(root, 'docs/使用与维护手册.md'), 'utf8');
+  assert.ok(manual.includes(`适用于知识库插件 **${SERVICE_VERSION}**`));
   const entries = await fs.readdir(root, { recursive: true });
+  assert.ok(!entries.includes('plugin.zip'), 'Jiangbao installer archive was included in the offline package');
   assert.ok(entries.every(entry => !/(?:^|[\\/])(?:libreoffice(?:\.md)?|poppler|soffice\.(?:bin|exe|com)|pdfinfo\.exe|pdftoppm\.exe|desktop-deployment\.json.*|local\.json)$/i.test(entry)));
   const sizes = await Promise.all(entries.map(entry => fs.stat(path.join(root, entry))));
   console.log('ZIP bytes:', (await fs.stat(archive)).size, 'Extracted bytes:', sizes.filter(entry => entry.isFile()).reduce((sum, entry) => sum + entry.size, 0));
@@ -70,6 +73,7 @@ try {
   await assert.rejects(fs.stat(desktopFilename), { code: 'ENOENT' });
 
   const { version } = JSON.parse(await fs.readFile(path.join(root, 'plugin/package.json'), 'utf8'));
+  assert.equal(version, SERVICE_VERSION);
   const installed = path.join(harnessHome, 'profiles/.generations/live', `${packageName}+${version}+0123456789ab`, 'node_modules', packageName);
   await fs.mkdir(path.dirname(installed), { recursive: true });
   const source = await fs.realpath(path.join(root, 'plugin'));
@@ -79,7 +83,19 @@ try {
   await fs.rename(source, destination);
   const entry = path.join(harnessHome, 'profiles/desktop/node_modules', packageName);
   await fs.mkdir(path.dirname(entry), { recursive: true });
+  const runDoctor = () => run(node, [path.join(root, 'dist/doctor.mjs'), '--desktop', '--harness-home', harnessHome], { windowsHide: true });
+  await fs.symlink(path.join(testRoot, 'removed-generation'), entry, 'junction');
+  await assert.rejects(runDoctor(), error => /插件入口仍指向缺失的安装目录.*removed-generation/.test(error.stderr));
+  await fs.unlink(entry);
   await fs.symlink(installed, entry, 'junction');
+  const manifestPath = path.join(installed, 'package.json');
+  const manifestText = await fs.readFile(manifestPath, 'utf8');
+  try {
+    await fs.writeFile(manifestPath, JSON.stringify({ ...JSON.parse(manifestText), version: '0.0.0' }));
+    await assert.rejects(runDoctor(), error => error.stderr.includes(`当前安装目录的版本为 0.0.0，本离线包版本为 ${SERVICE_VERSION}`));
+  } finally {
+    await fs.writeFile(manifestPath, manifestText);
+  }
   assert.doesNotMatch(await fs.readFile(path.join(installed, 'cordis.patch.yml'), 'utf8'), /configFile|projectRoot/);
   const probe = path.join(directory, 'host-probe.mjs');
   await fs.writeFile(probe, `import { pathToFileURL } from 'node:url';

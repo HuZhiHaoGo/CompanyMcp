@@ -54275,7 +54275,7 @@ async function initializeDesktopConfig({ filename, options }, configSources, rep
 
 // src/runtime.ts
 import { createHmac } from "node:crypto";
-var SERVICE_VERSION = "0.11.15";
+var SERVICE_VERSION = "0.11.17";
 var RUNTIME_PROTOCOL = "tbea-runtime/v1";
 function canonical(value) {
   if (Array.isArray(value)) return value.map(canonical);
@@ -70381,6 +70381,17 @@ var idleMs = 10 * 60 * 1e3;
 var maxPreviews = 3;
 var mockFormats = ["pdf", "docx", "doc", "ppt", "pptx", "txt", "md", "html", "mhtml", "dps", "dpsx", "ofd", "wps", "png", "jpg", "jpeg", "bmp"];
 var pdfTimingKeys = ["pdfAssetMs", "pdfLoadMs", "pdfRenderMs"];
+function parsePdfFailure(raw) {
+  const value = raw.length <= 512 ? JSON.parse(raw) : null;
+  if (isRecord(value) && typeof value.errorCode === "string" && /^[A-Z][A-Z0-9_]{0,63}$/u.test(value.errorCode)) {
+    const { phase, errorCode: errorCode2, begin, end, retries } = value;
+    if (phase === "asset" || phase === "load" || phase === "render") return { phase, errorCode: errorCode2 };
+    if (phase === "range" && typeof begin === "number" && Number.isSafeInteger(begin) && begin >= 0 && typeof end === "number" && Number.isSafeInteger(end) && end > begin && end - begin <= 1024 * 1024 && typeof retries === "number" && Number.isInteger(retries) && retries >= 0 && retries <= 2) {
+      return { phase, errorCode: errorCode2, begin, end, retries };
+    }
+  }
+  throw new Error("Invalid PDF failure");
+}
 var LibraryBrowser = class {
   lifetime = new AbortController();
   previews = /* @__PURE__ */ new Map();
@@ -70622,33 +70633,53 @@ var LibraryBrowser = class {
       }
     })());
   }
-  async previewResult(id, status, elapsed, signal, parseElapsed = null, pdfTimings = {}) {
+  async previewResult(id, status, elapsed, signal, parseElapsed = null, pdfMetrics = {}) {
     const ms = Number(elapsed);
-    if (!status || !["ready", "password", "invalid-pdf", "load-failed", "render-failed", "invalid-sheet", "sheet-too-large", "sheet-timeout"].includes(status) || !elapsed || !Number.isSafeInteger(ms) || ms < 0 || ms > 6e5) throw new PlatformError("INVALID_PREVIEW_RESULT", "\u65E0\u6548\u7684\u9884\u89C8\u7ED3\u679C");
+    if (!status || !["ready", "password", "invalid-pdf", "load-failed", "render-failed", "range-failed", "invalid-sheet", "sheet-too-large", "sheet-timeout"].includes(status) || !elapsed || !Number.isSafeInteger(ms) || ms < 0 || ms > 6e5) throw new PlatformError("INVALID_PREVIEW_RESULT", "\u65E0\u6548\u7684\u9884\u89C8\u7ED3\u679C");
     const parseMs = parseElapsed === null ? void 0 : Number(parseElapsed);
     if (parseMs !== void 0 && (!Number.isSafeInteger(parseMs) || parseMs < 0 || parseMs > ms)) throw new PlatformError("INVALID_PREVIEW_RESULT", "\u65E0\u6548\u7684\u89E3\u6790\u8017\u65F6");
     const pdfParts = {};
     let pdfTotal = 0;
     for (const key of pdfTimingKeys) {
-      const value = pdfTimings[key];
+      const value = pdfMetrics[key];
       if (value == null) continue;
       if (!/^\d+$/u.test(value)) throw new PlatformError("INVALID_PREVIEW_RESULT", "\u65E0\u6548\u7684 PDF \u9636\u6BB5\u8017\u65F6");
       pdfParts[key] = Number(value);
       pdfTotal += pdfParts[key];
     }
     if (pdfTotal > ms) throw new PlatformError("INVALID_PREVIEW_RESULT", "\u65E0\u6548\u7684 PDF \u9636\u6BB5\u8017\u65F6");
-    return this.withPreview(id, signal, async (preview) => {
-      await appendDiagnostic(this.config, {
-        event: preview.sheet ? "tbea-preview-first-sheet" : "tbea-preview-first-page",
-        previewId: preview.id,
-        format: preview.format,
-        status,
-        parseMs,
-        ...preview.pdfBytes && pdfParts,
-        ms
+    let pdfFailure;
+    if (pdfMetrics.pdfFailure != null) {
+      try {
+        pdfFailure = parsePdfFailure(pdfMetrics.pdfFailure);
+      } catch {
+        throw new PlatformError("INVALID_PREVIEW_RESULT", "\u65E0\u6548\u7684 PDF \u9519\u8BEF\u8BCA\u65AD");
+      }
+    }
+    if (pdfFailure && !["password", "invalid-pdf", "load-failed", "render-failed", "range-failed"].includes(status) || status === "range-failed" && pdfFailure?.phase !== "range") {
+      throw new PlatformError("INVALID_PREVIEW_RESULT", "\u65E0\u6548\u7684 PDF \u9519\u8BEF\u8BCA\u65AD");
+    }
+    const event = status === "range-failed" ? "tbea-preview-pdf-failure" : "tbea-preview-first-page";
+    try {
+      return await this.withPreview(id, signal, async (preview) => {
+        if (pdfFailure && !preview.pdfBytes) throw new PlatformError("INVALID_PREVIEW_RESULT", "\u65E0\u6548\u7684 PDF \u9519\u8BEF\u8BCA\u65AD");
+        await appendDiagnostic(this.config, {
+          event: preview.sheet ? "tbea-preview-first-sheet" : event,
+          previewId: preview.id,
+          format: preview.format,
+          status,
+          parseMs,
+          ...preview.pdfBytes && pdfParts,
+          pdfFailure,
+          ms
+        });
+        return { recorded: true };
       });
+    } catch (error3) {
+      if (pdfFailure?.phase !== "range" || pdfFailure.errorCode !== "PREVIEW_NOT_FOUND" || !hasCode(error3, "PREVIEW_NOT_FOUND") || !id || !/^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/u.test(id)) throw error3;
+      await appendDiagnostic(this.config, { event, previewId: id, status, ...pdfParts, pdfFailure, ms });
       return { recorded: true };
-    });
+    }
   }
   async pdfRange(id, begin, end, signal) {
     return this.readRange(id, begin, end, signal, "pdf");
@@ -70845,7 +70876,8 @@ async function createKnowledgeServer(config2, options = {}) {
         return send(res, 200, await library.previewResult(args.get("previewId"), args.get("status"), args.get("elapsedMs"), signal, args.get("parseMs"), {
           pdfAssetMs: args.get("pdfAssetMs"),
           pdfLoadMs: args.get("pdfLoadMs"),
-          pdfRenderMs: args.get("pdfRenderMs")
+          pdfRenderMs: args.get("pdfRenderMs"),
+          pdfFailure: args.get("pdfFailure")
         }));
       case "/pdf-range":
         return send(res, 200, await library.pdfRange(args.get("previewId"), args.get("begin"), args.get("end"), signal), "application/octet-stream");
@@ -71396,7 +71428,7 @@ async function apply(ctx, config2 = {}) {
       }
       const url2 = new URL(libraryAction ? `/library/${libraryAction}` : endpoint === "asset" ? "/asset" : "/snapshot", base);
       if (libraryAction) {
-        for (const key of ["libraryId", "documentId", "previewId", "status", "elapsedMs", "parseMs", "pdfAssetMs", "pdfLoadMs", "pdfRenderMs", "begin", "end"]) {
+        for (const key of ["libraryId", "documentId", "previewId", "status", "elapsedMs", "parseMs", "pdfAssetMs", "pdfLoadMs", "pdfRenderMs", "pdfFailure", "begin", "end"]) {
           const value = args?.[key];
           if (typeof value === "string" || typeof value === "number") url2.searchParams.set(key, String(value));
         }

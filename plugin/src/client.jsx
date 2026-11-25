@@ -24,7 +24,7 @@ export function apply(ctx) {
     }
     const result = await response.json().catch(() => null);
     if (!response.ok || result?.ok !== true) {
-      throw new Error(result?.error?.message || `知识展示请求失败（HTTP ${response.status}）`);
+      throw Object.assign(new Error(result?.error?.message || `知识展示请求失败（HTTP ${response.status}）`), { code: result?.error?.code });
     }
     return result.value;
   };

@@ -27,8 +27,8 @@ type LibraryRequests = {
     result: Awaited<ReturnType<LibraryService['previewProgress']>>;
   };
   'library-preview-result': {
-    args: { previewId: string; status: 'ready' | 'password' | 'invalid-pdf' | 'load-failed' | 'render-failed' | 'invalid-sheet' | 'sheet-too-large' | 'sheet-timeout';
-      elapsedMs: number; parseMs?: number; pdfAssetMs?: number; pdfLoadMs?: number; pdfRenderMs?: number };
+    args: { previewId: string; status: 'ready' | 'password' | 'invalid-pdf' | 'load-failed' | 'render-failed' | 'range-failed' | 'invalid-sheet' | 'sheet-too-large' | 'sheet-timeout';
+      elapsedMs: number; parseMs?: number; pdfAssetMs?: number; pdfLoadMs?: number; pdfRenderMs?: number; pdfFailure?: string };
     result: Awaited<ReturnType<LibraryService['previewResult']>>;
   };
   'library-pdf-range': {

@@ -157,11 +157,22 @@ try {
     const page = await browser.newPage({ viewport });
     const pdf = samplePreviewPdf(40);
     const pageErrors = [];
+    const rangeAttempts = new Map();
+    let rangeMode = name === 'catalog-desktop' ? 'recover' : 'normal';
+    let recoveryRange;
     page.on('pageerror', error => pageErrors.push(error.message));
     await page.route('**/demo/library/open?**', route => route.fulfill({ json: { previewId: 'test', pdfBytes: pdf.length } }));
     await page.route('**/demo/library/pdf-range?**', route => {
       const args = new URL(route.request().url()).searchParams;
-      return route.fulfill({ body: pdf.subarray(Number(args.get('begin')), Number(args.get('end'))), contentType: 'application/octet-stream' });
+      const begin = Number(args.get('begin')), end = Number(args.get('end'));
+      const range = `${begin}:${end}`;
+      const attempts = (rangeAttempts.get(range) ?? 0) + 1;
+      rangeAttempts.set(range, attempts);
+      if (rangeMode === 'recover') recoveryRange ??= range;
+      if (rangeMode === 'busy' || (rangeMode === 'recover' && range === recoveryRange && attempts <= 2)) {
+        return route.fulfill({ status: 400, json: { code: 'SERVICE_BUSY', message: '等待检索的请求过多，请稍后重试' } });
+      }
+      return route.fulfill({ body: pdf.subarray(begin, end), contentType: 'application/octet-stream' });
     });
     await page.goto('http://127.0.0.1:17869/demo?library');
     const libraryPicker = page.getByRole('combobox', { name: '知识库', exact: true });
@@ -182,6 +193,7 @@ try {
     await page.getByText('找到 1 份文档').waitFor();
     await page.getByRole('button', { name: /预览演示\.pdf/ }).click();
     await page.getByRole('img', { name: '原文第 1 页', exact: true }).waitFor();
+    if (rangeMode === 'recover' && rangeAttempts.get(recoveryRange) !== 3) throw new Error('PDF preview did not recover after two busy responses');
     if (await page.getByRole('img', { name: '原文第 40 页', exact: true }).count()) throw new Error(`${name}: rendered a distant page before scroll`);
     await page.screenshot({ path: path.join(root, `test-results/${name}.png`) });
     await page.getByText('第 40 页', { exact: true }).scrollIntoViewIfNeeded();
@@ -189,6 +201,22 @@ try {
     if (await page.getByRole('link', { name: /下载/ }).count()) throw new Error(`${name}: shows a download link`);
     await page.getByRole('button', { name: '返回文档目录' }).click();
     await search.waitFor();
+    if (name === 'catalog-desktop') {
+      rangeMode = 'busy';
+      rangeAttempts.clear();
+      const failureReport = page.waitForRequest(request => request.url().includes('/demo/library/preview-result?')
+        && new URL(request.url()).searchParams.has('pdfFailure'));
+      await page.getByRole('button', { name: /预览演示\.pdf/ }).click();
+      await page.getByRole('alert').filter({ hasText: 'PDF 读取繁忙，请稍后重试。' }).waitFor();
+      const diagnostic = JSON.parse(new URL((await failureReport).url()).searchParams.get('pdfFailure'));
+      if (diagnostic.phase !== 'range' || diagnostic.errorCode !== 'SERVICE_BUSY' || diagnostic.retries !== 2
+        || rangeAttempts.get(`${diagnostic.begin}:${diagnostic.end}`) !== 3) throw new Error('PDF busy failure report is missing its range or retry count');
+      rangeMode = 'normal';
+      await page.getByRole('button', { name: '重试', exact: true }).click();
+      await page.getByRole('img', { name: '原文第 1 页', exact: true }).waitFor();
+      await page.getByRole('button', { name: '返回文档目录' }).click();
+      console.log('PDF busy responses, failure diagnostics and manual retry OK');
+    }
     if (await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1)) throw new Error(`${name}: horizontal overflow`);
     if (pageErrors.length) throw new Error(pageErrors.join('\n'));
     await page.close();
